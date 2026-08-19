@@ -76,6 +76,29 @@ export interface SpecDisplayItem {
   value: string;
 }
 
+/** 品質ゲートの結果（汎用パイプラインが扱う形式） */
+export interface QualityGateReport {
+  name: string;
+  pass: boolean;
+  message: string;
+}
+
+/** UI表示用のカテゴリ固有コピー（汎用クライアントが描画に使用） */
+export interface CategoryCopy {
+  /** ヘッダー/トップのアプリ名 */
+  appTitle: string;
+  /** 開始画面のアイキャッチ */
+  heroTitle: string;
+  heroLead: string;
+  /** 開始画面の利点リスト */
+  benefits: ReadonlyArray<{ title: string; text: string }>;
+  /** 開始画面の注記 */
+  note: string;
+  /** 結果画面のタイトル */
+  resultTitle: string;
+  resultNoMatchTitle: string;
+}
+
 /** カテゴリ固有モジュールの契約（プロンプト§7の想定インターフェース） */
 export interface CategoryModule<C, P extends CatalogProduct> {
   key: string;
@@ -97,4 +120,10 @@ export interface CategoryModule<C, P extends CatalogProduct> {
   attainableMaxScore?(criteria: C): number;
   /** 商品カードに表示するスペック項目（カテゴリ固有の単位・文言） */
   formatSpecs(product: P): SpecDisplayItem[];
+  /** カテゴリ固有の品質ゲート（範囲・構成検証など。未定義なら追加ゲートなし） */
+  qualityGates?(products: P[]): QualityGateReport[];
+  /** 回帰テスト用の代表回答（hard-match が非空を返すことを検証）。未定義なら回帰ゲートをスキップ */
+  regressionSampleAnswers?: AnswerRecord[];
+  /** UI描画用のカテゴリ固有コピー */
+  copy: CategoryCopy;
 }

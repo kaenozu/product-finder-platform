@@ -1,4 +1,9 @@
-import type { QuestionDefinition, ProductOffer, SpecDisplayItem } from "../../shared/domain/types";
+import type {
+  CategoryCopy,
+  QuestionDefinition,
+  ProductOffer,
+  SpecDisplayItem,
+} from "../../shared/domain/types";
 
 export interface ConfigResponse {
   categoryKey: string;
@@ -6,6 +11,7 @@ export interface ConfigResponse {
   maxCandidates: number;
   scoreLabels: Record<string, string>;
   maxScore: number;
+  copy: CategoryCopy;
 }
 
 export interface CandidateResponse {

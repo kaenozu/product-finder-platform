@@ -1,27 +1,18 @@
+import type { CategoryCopy } from "../../shared/domain/types";
+
 interface Props {
+  copy: CategoryCopy;
   onStart: () => void;
 }
 
-const BENEFITS = [
-  { title: "人数に合う容量", text: "家族構成から必要な合数で絞り込み" },
-  { title: "使い方に合う機能", text: "同時調理・保温・軽さ・サイズを比較" },
-  { title: "予算に合う価格", text: "価格情報がある商品は予算内の候補を優先します" },
-];
-
-export function StartScreen({ onStart }: Props) {
+export function StartScreen({ copy, onStart }: Props) {
   return (
     <div className="start">
-      <p className="eyebrow">炊飯器選び診断</p>
-      <h1>
-        あなたに合った炊飯器を、
-        <br />
-        数分で見つける。
-      </h1>
-      <p className="lead">
-        家族の人数・使い方・予算を答えると、 いまの暮らしに合う炊飯器をランキングで紹介します。
-      </p>
+      <p className="eyebrow">{copy.appTitle}</p>
+      <h1>{copy.heroTitle}</h1>
+      <p className="lead">{copy.heroLead}</p>
       <ul className="benefits">
-        {BENEFITS.map((b) => (
+        {copy.benefits.map((b) => (
           <li key={b.title}>
             <strong>{b.title}</strong>
             <span>{b.text}</span>
@@ -31,9 +22,7 @@ export function StartScreen({ onStart }: Props) {
       <button className="btn-primary" onClick={onStart} type="button">
         診断をはじめる
       </button>
-      <p className="note">
-        比較は各メーカー公式サイトの公開スペックに基づきます。価格は参考価格または販売店の価格です（オープン価格の商品は価格不明のため予算の判定から除外します）。
-      </p>
+      <p className="note">{copy.note}</p>
     </div>
   );
 }

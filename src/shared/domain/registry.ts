@@ -4,6 +4,8 @@ import { QUESTIONS } from "./rice-cooker/questions";
 import {
   SCORE_LABELS,
   MAX_SCORE,
+  COPY,
+  REGRESSION_SAMPLE_ANSWERS,
   attainableMaxScore,
   buildWarnings,
   canShowPartialResult,
@@ -11,6 +13,7 @@ import {
   explain,
   formatSpecs,
   hardMatch,
+  qualityGates,
   score,
   unansweredImportantKeys,
 } from "./rice-cooker/module";
@@ -29,6 +32,9 @@ export const riceCookerModule: CategoryModule<RiceCookerCriteria, RiceCookerProd
   maxScore: MAX_SCORE,
   attainableMaxScore,
   formatSpecs,
+  qualityGates,
+  regressionSampleAnswers: REGRESSION_SAMPLE_ANSWERS,
+  copy: COPY,
 };
 
 const MODULES = new Map<string, CategoryModule<unknown, never>>([
