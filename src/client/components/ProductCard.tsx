@@ -92,8 +92,14 @@ export function ProductCard({ candidate, rank, maxScore, scoreLabels, expanded, 
               <h4>購入先</h4>
               <ul className="sources">
                 {candidate.offers.map((o) => (
-                  <li key={o.outboundUrl}>
-                    <a href={o.outboundUrl} target="_blank" rel="noopener noreferrer">
+                  <li key={o.providerItemId}>
+                    <a
+                      href={`/go/${encodeURIComponent(o.providerKey)}/${encodeURIComponent(
+                        o.providerItemId
+                      )}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
                       購入先を開く ↗
                     </a>
                   </li>

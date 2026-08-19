@@ -105,6 +105,49 @@ describe("catalog repository", () => {
       priceMinor: 2500000,
     });
   });
+
+  it("別カテゴリのofferは混ざらない（categoryKeyでSQL絞り込み）", async () => {
+    // rice-cookerのactive版にp-1のofferを登録
+    await ensureCatalogState(db(), CATEGORY);
+    const v1 = await createStagingVersion(db(), CATEGORY, "test", 1);
+    await insertProducts(db(), v1, [makeProduct("p-1")]);
+    await insertOffers(db(), v1, [
+      {
+        productId: "p-1",
+        providerKey: "rakuten",
+        providerItemId: "item-rice",
+        outboundUrl: "https://item.rakuten.co.jp/example/rice",
+        priceMinor: 100000,
+        currency: "JPY",
+        availability: "in_stock",
+        updatedAt: "2026-08-19T00:00:00Z",
+      },
+    ]);
+    await publishVersion(db(), CATEGORY, v1);
+
+    // 別カテゴリのactive版にも同じproductIdのofferを登録
+    const otherCategory = "other-cat";
+    await ensureCatalogState(db(), otherCategory);
+    const v2 = await createStagingVersion(db(), otherCategory, "test", 1);
+    await insertProducts(db(), v2, [makeProduct("p-1", otherCategory as "rice-cooker")]);
+    await insertOffers(db(), v2, [
+      {
+        productId: "p-1",
+        providerKey: "rakuten",
+        providerItemId: "item-other",
+        outboundUrl: "https://item.rakuten.co.jp/example/other",
+        priceMinor: 999999,
+        currency: "JPY",
+        availability: "in_stock",
+        updatedAt: "2026-08-19T00:00:00Z",
+      },
+    ]);
+    await publishVersion(db(), otherCategory, v2);
+
+    const offers = await listOffersForProducts(db(), CATEGORY, ["p-1"]);
+    expect(offers).toHaveLength(1);
+    expect(offers[0].providerItemId).toBe("item-rice");
+  });
 });
 
 describe("ingest pipeline（品質ゲート込み）", () => {

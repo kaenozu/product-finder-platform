@@ -48,7 +48,12 @@ export default {
 
     const redirectMatch = pathname.match(/^\/go\/([^/]+)\/([^/]+)\/?$/);
     if (redirectMatch && redirectMatch[1] && redirectMatch[2]) {
-      return handleRedirect(env, request, redirectMatch[1], redirectMatch[2]);
+      return handleRedirect(
+        env,
+        request,
+        decodeURIComponent(redirectMatch[1]),
+        decodeURIComponent(redirectMatch[2])
+      );
     }
 
     return json({ error: "not_found", path: pathname }, { status: 404 });

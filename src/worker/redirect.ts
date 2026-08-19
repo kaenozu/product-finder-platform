@@ -12,14 +12,15 @@ export async function handleRedirect(
   providerKey: string,
   token: string
 ): Promise<Response> {
-  if (!/^[a-z0-9-]+$/i.test(providerKey) || !/^[a-z0-9-]+$/i.test(token)) {
+  if (!/^[a-z0-9-]+$/i.test(providerKey) || !/^[a-z0-9._~-]{1,200}$/i.test(token)) {
     return json({ error: "invalid_redirect" }, { status: 400 });
   }
 
   const offer = await env.DB.prepare(
-    `SELECT o.version_id, o.product_id, o.category_key, o.provider_item_id, o.outbound_url
+    `SELECT o.version_id, o.product_id, p.category_key, o.provider_item_id, o.outbound_url
        FROM product_offers o
        JOIN catalog_state s ON s.active_version_id = o.version_id
+       JOIN products p ON p.version_id = o.version_id AND p.product_id = o.product_id
        WHERE o.provider_key = ? AND o.provider_item_id = ?
        LIMIT 1`
   )
