@@ -54,20 +54,44 @@ describe("deriveCriteria", () => {
         useTacook: "yes",
         installWidth: "under24",
       },
-      { requiredCapacityGou: 5.5, budgetMaxYen: 20000, installWidthMm: 240, useTacook: true },
+      {
+        requiredCapacityGou: 5.5,
+        budgetYen: { min: 10000, max: 20000 },
+        installWidthMm: 240,
+        useTacook: true,
+      },
     ],
     [
       { cookVolume: "3" },
-      { requiredCapacityGou: 3, budgetMaxYen: null, installWidthMm: null, useTacook: false },
+      {
+        requiredCapacityGou: 3,
+        budgetYen: { min: null, max: null },
+        installWidthMm: null,
+        useTacook: false,
+      },
     ],
     [
       { cookVolume: "10", budget: "under10k", installWidth: "free" },
-      { requiredCapacityGou: 10, budgetMaxYen: 10000, installWidthMm: null, useTacook: false },
+      {
+        requiredCapacityGou: 10,
+        budgetYen: { min: 0, max: 10000 },
+        installWidthMm: null,
+        useTacook: false,
+      },
+    ],
+    [
+      { cookVolume: "3", budget: "over30k" },
+      {
+        requiredCapacityGou: 3,
+        budgetYen: { min: 30000, max: null },
+        installWidthMm: null,
+        useTacook: false,
+      },
     ],
   ])("answers=%j → criteria部分", (answers, expected) => {
     const c = deriveCriteria(answers);
     expect(c.requiredCapacityGou).toBe(expected.requiredCapacityGou);
-    expect(c.budgetMaxYen).toBe(expected.budgetMaxYen);
+    expect(c.budgetYen).toEqual(expected.budgetYen);
     expect(c.installWidthMm).toBe(expected.installWidthMm);
     expect(c.useTacook).toBe(expected.useTacook);
   });
@@ -541,6 +565,30 @@ describe("recommend ガードと結果メタデータ", () => {
     expect(result.scoreLabels).toEqual(riceCookerModule.scoreLabels);
     expect(result.scoreLabels.fitScore).toBeDefined();
   });
+
+  it("一致度%が回答条件ごとに到達可能な最大値で正規化される（attainableMaxScore）", async () => {
+    const fetched = await adapter.fetch(new ctxCtor());
+    const { products } = await adapter.normalize(fetched, ctxCtor());
+
+    // 「加熱方式こだわらない」「予算こだわらない」なら到達可能上限が下がる
+    const relaxed = recommend(
+      riceCookerModule,
+      { cookVolume: "5.5", heating: "any", budget: "any", priority: "taste", installWidth: "free" },
+      products,
+      new Map()
+    );
+    // heating 1.5 + budget 1.5 → 11 - 1 = 10
+    expect(relaxed.maxScore).toBe(10);
+
+    // 完全回答（加熱方式・予算とも指定）なら理論最大11に届く
+    const full = recommend(riceCookerModule, FULL_ANSWERS, products, new Map());
+    expect(full.maxScore).toBe(11);
+
+    // 全候補の一致度%が100%以下になる
+    for (const c of relaxed.candidates) {
+      expect(c.totalScore).toBeLessThanOrEqual(relaxed.maxScore);
+    }
+  });
 });
 
 function ctxCtor() {
@@ -581,6 +629,18 @@ describe("budgetScore（実売offer価格ベース）", () => {
     // priceMinor は 円×100（例: 15000円=1500000）
     expect(budgetScoreViaScore(p, criteria, [offer(1500000)])).toBe(2);
     expect(budgetScoreViaScore(p, criteria, [offer(3000000)])).toBe(0);
+  });
+
+  it("「3万円以上」は上限なしとして扱う（7万円商品でも満点）", () => {
+    const criteria = deriveCriteria({ cookVolume: "3", budget: "over30k" });
+    expect(budgetScoreViaScore(p, criteria, [offer(7000000)])).toBe(2);
+    // 下限（3万円）を大きく下回る商品は減点
+    expect(budgetScoreViaScore(p, criteria, [offer(2000000)])).toBe(0);
+  });
+
+  it("予算内ギリギリ超過（1.2倍以内）は部分点", () => {
+    const criteria = deriveCriteria({ cookVolume: "3", budget: "10to20k" });
+    expect(budgetScoreViaScore(p, criteria, [offer(2300000)])).toBe(1);
   });
 
   it("価格不明（offer/referenceともnull）なら中立", () => {

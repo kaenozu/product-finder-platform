@@ -52,18 +52,20 @@ export type PriorityPreference = "taste" | "functions" | "keepwarm" | "ease" | "
 export interface RiceCookerCriteria {
   requiredCapacityGou: number;
   heatingPreference: HeatingPreference;
-  budgetMaxYen: number | null;
+  /** 予算の下限・上限（円）。null=制約なし。「3万円以上」は上限なしとして扱う */
+  budgetYen: { min: number | null; max: number | null };
   priority: PriorityPreference;
   useTacook: boolean;
   installWidthMm: number | null;
   answeredKeys: RiceCookerAnswerKey[];
 }
 
-export const BUDGET_LIMIT: Record<Exclude<BudgetPreference, "any">, number> = {
-  under10k: 10_000,
-  "10to20k": 20_000,
-  "20to30k": 30_000,
-  over30k: 50_000,
+export const BUDGET_BOUNDS: Record<BudgetPreference, { min: number | null; max: number | null }> = {
+  under10k: { min: 0, max: 10_000 },
+  "10to20k": { min: 10_000, max: 20_000 },
+  "20to30k": { min: 20_000, max: 30_000 },
+  over30k: { min: 30_000, max: null },
+  any: { min: null, max: null },
 };
 
 export const INSTALL_WIDTH_MM: Record<"under24" | "under25" | "under27", number> = {

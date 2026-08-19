@@ -11,6 +11,7 @@ export interface ProductRow {
   source_key: string;
   source_updated_at: string;
   ingested_at: string;
+  reference_price_yen: number | null;
 }
 
 export interface OfferRow {
@@ -41,7 +42,7 @@ export function rowToProduct(row: ProductRow): CatalogProduct {
     model: row.model,
     displayName: row.display_name,
     specs: JSON.parse(row.specs_json) as Record<string, unknown>,
-    referencePriceYen: null,
+    referencePriceYen: row.reference_price_yen,
     availability: row.availability as CatalogProduct["availability"],
     sourceKey: row.source_key,
     sourceUpdatedAt: row.source_updated_at,
@@ -117,12 +118,13 @@ export async function insertProducts(
         db
           .prepare(
             `INSERT INTO products
-              (version_id, product_id, category_key, manufacturer, model, display_name, specs_json, availability, source_key, source_updated_at, ingested_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              (version_id, product_id, category_key, manufacturer, model, display_name, specs_json, availability, source_key, source_updated_at, ingested_at, reference_price_yen)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT(version_id, product_id) DO UPDATE SET
                manufacturer=excluded.manufacturer, model=excluded.model, display_name=excluded.display_name,
                specs_json=excluded.specs_json, availability=excluded.availability,
-               source_key=excluded.source_key, source_updated_at=excluded.source_updated_at, ingested_at=excluded.ingested_at`
+               source_key=excluded.source_key, source_updated_at=excluded.source_updated_at, ingested_at=excluded.ingested_at,
+               reference_price_yen=excluded.reference_price_yen`
           )
           .bind(
             versionId,
@@ -135,7 +137,8 @@ export async function insertProducts(
             p.availability,
             p.sourceKey,
             p.sourceUpdatedAt,
-            p.ingestedAt
+            p.ingestedAt,
+            p.referencePriceYen
           )
       )
     );
@@ -236,7 +239,8 @@ export async function listActiveProducts(
   const rows = await db
     .prepare(
       `SELECT p.product_id, p.category_key, p.manufacturer, p.model, p.display_name,
-              p.specs_json, p.availability, p.source_key, p.source_updated_at, p.ingested_at
+              p.specs_json, p.availability, p.source_key, p.source_updated_at, p.ingested_at,
+              p.reference_price_yen
        FROM products p
        JOIN catalog_state s ON s.active_version_id = p.version_id
        WHERE p.category_key = ?
@@ -255,7 +259,8 @@ export async function getActiveProductById(
   const row = await db
     .prepare(
       `SELECT p.product_id, p.category_key, p.manufacturer, p.model, p.display_name,
-              p.specs_json, p.availability, p.source_key, p.source_updated_at, p.ingested_at
+              p.specs_json, p.availability, p.source_key, p.source_updated_at, p.ingested_at,
+              p.reference_price_yen
        FROM products p
        JOIN catalog_state s ON s.active_version_id = p.version_id
        WHERE p.category_key = ? AND p.product_id = ?`

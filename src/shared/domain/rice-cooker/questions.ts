@@ -68,7 +68,12 @@ export const QUESTIONS: QuestionDefinition[] = [
         next: "useTacook",
       },
       { value: "keepwarm", label: "長時間保温", next: "installWidth" },
-      { value: "ease", label: "手入れのしやすさ", next: "installWidth" },
+      {
+        value: "ease",
+        label: "軽さ・取り回し",
+        description: "毎日持ち運ぶ・洗う負担を軽く",
+        next: "installWidth",
+      },
       { value: "compact", label: "コンパクトさ", next: "installWidth" },
     ],
   },
