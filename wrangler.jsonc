@@ -1,0 +1,24 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "kuraberu-diagnosis",
+  "compatibility_date": "2026-08-19",
+  "main": "./worker/index.ts",
+  "assets": {
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"],
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "kuraberu-diagnosis",
+      "database_id": "91f363a6-3abe-4c12-9932-3dd35f3db8e9",
+      "migrations_dir": "migrations",
+    },
+  ],
+  "triggers": {
+    "crons": ["0 3 * * *"],
+  },
+  "observability": {
+    "enabled": true,
+  },
+}
