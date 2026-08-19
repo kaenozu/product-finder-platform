@@ -61,6 +61,7 @@ export async function handleConfig(request: Request): Promise<Response> {
     maxCandidates: MAX_CANDIDATES,
     scoreLabels: module.scoreLabels,
     maxScore: module.maxScore,
+    copy: module.copy,
   });
 }
 

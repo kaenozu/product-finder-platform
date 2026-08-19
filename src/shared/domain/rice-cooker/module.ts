@@ -2,6 +2,7 @@ import type {
   AnswerRecord,
   HardMatchResult,
   ProductOffer,
+  QualityGateReport,
   RecommendationReason,
   ScoreResult,
   SpecDisplayItem,
@@ -36,6 +37,79 @@ export const HEATING_LABELS: Record<HeatingMethod, string> = {
 
 /** スコアの理論上の最大値（fit3 + heating2 + feature3 + budget2 + freshness1） */
 export const MAX_SCORE = 11;
+
+/** UI描画用のカテゴリ固有コピー */
+export const COPY = {
+  appTitle: "炊飯器選び診断",
+  heroTitle: "あなたに合った炊飯器を、数分で見つける。",
+  heroLead:
+    "容量・加熱方式・予算など、普段の炊き方を数問答えるだけで、あなたに合った炊飯器を診断します。",
+  benefits: [
+    { title: "かんたん数問", text: "6問の質問に答えるだけ" },
+    { title: "相性をスコア化", text: "条件との一致度でランキング" },
+    { title: "スペックで比較", text: "容量・加熱方式・価格を一覧で" },
+  ],
+  note: "診断は目安です。購入時は最新の価格・在庫をご確認ください。",
+  resultTitle: "あなたに合う炊飯器",
+  resultNoMatchTitle: "条件に合う炊飯器が見つかりませんでした",
+} as const;
+
+/** 品質ゲート: 物理的な範囲チェック（信頼できる値のみ許容） */
+function rangeGate(products: RiceCookerProduct[]): QualityGateReport {
+  const issues: string[] = [];
+  for (const p of products) {
+    const s = p.specs;
+    if (s.capacityGou < 0.5 || s.capacityGou > 12)
+      issues.push(`${p.productId}: 容量${s.capacityGou}合`);
+    if (s.powerW !== null && (s.powerW < 100 || s.powerW > 3000))
+      issues.push(`${p.productId}: 消費電力${s.powerW}W`);
+    if (s.widthMm !== null && (s.widthMm < 150 || s.widthMm > 500))
+      issues.push(`${p.productId}: 幅${s.widthMm}mm`);
+    if (s.weightKg !== null && (s.weightKg < 1 || s.weightKg > 30))
+      issues.push(`${p.productId}: 質量${s.weightKg}kg`);
+    if (s.keepWarmHours !== null && (s.keepWarmHours < 1 || s.keepWarmHours > 72))
+      issues.push(`${p.productId}: 保温${s.keepWarmHours}h`);
+    if (s.releaseYear !== null && (s.releaseYear < 2000 || s.releaseYear > 2100))
+      issues.push(`${p.productId}: 発売年${s.releaseYear}`);
+  }
+  return {
+    name: "range",
+    pass: issues.length === 0,
+    message:
+      issues.length === 0 ? "全スペックが物理的な範囲内" : `範囲外スペック: ${issues.join(", ")}`,
+  };
+}
+
+/** 品質ゲート: 診断が機能する最低限のラインナップ（加熱方式・メーカー） */
+function fixtureGate(products: RiceCookerProduct[]): QualityGateReport {
+  const methods = new Set(products.map((p) => p.specs.heatingMethod));
+  const manufacturers = new Set(products.map((p) => p.manufacturer));
+  const missing: string[] = [];
+  for (const m of ["micom", "ih", "pressure_ih"] as const) {
+    if (!methods.has(m)) missing.push(`加熱方式:${m}`);
+  }
+  if (manufacturers.size < 3) missing.push(`メーカー数が3未満（${manufacturers.size}）`);
+  const pass = missing.length === 0;
+  return {
+    name: "fixture",
+    pass,
+    message: pass
+      ? `ラインナップ充足（3加熱方式 / ${manufacturers.size}メーカー）`
+      : `ラインナップ不足: ${missing.join(", ")}`,
+  };
+}
+
+/** カテゴリ固有の品質ゲート（汎用パイプラインから呼ばれる） */
+export function qualityGates(products: RiceCookerProduct[]): QualityGateReport[] {
+  return [rangeGate(products), fixtureGate(products)];
+}
+
+/** 回帰テスト用の代表回答（hard-match が非空を返すことの検証に使用） */
+export const REGRESSION_SAMPLE_ANSWERS: AnswerRecord[] = [
+  { cookVolume: "3", heating: "any" },
+  { cookVolume: "5.5", heating: "ih" },
+  { cookVolume: "5.5", heating: "pressure_ih", installWidth: "under27" },
+];
 
 /**
  * 回答条件ごとに到達可能な最大スコア。

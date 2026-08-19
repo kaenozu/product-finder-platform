@@ -11,15 +11,11 @@ import {
   setVersionStatus,
   publishVersion,
 } from "../repo/catalog";
-import type { CatalogProduct } from "../../shared/domain/types";
-import type { RiceCookerCriteria, RiceCookerProduct } from "../../shared/domain/rice-cooker/types";
-import { deriveCriteria } from "../../shared/domain/rice-cooker/module";
-import { riceCookerModule } from "../../shared/domain/registry";
+import type { CatalogProduct, CategoryModule } from "../../shared/domain/types";
+import { getModule } from "../../shared/domain/registry";
 import {
   countGate,
-  fixtureGate,
   hardConditionRegressionGate,
-  rangeGate,
   schemaGate,
   uniquenessGate,
   versionRegressionGate,
@@ -37,15 +33,39 @@ export interface IngestSummary {
   errorSummary?: string;
 }
 
-const REGRESSION_SAMPLE_CRITERIA: RiceCookerCriteria[] = [
-  deriveCriteria({ cookVolume: "3", heating: "any" }),
-  deriveCriteria({ cookVolume: "5.5", heating: "ih" }),
-  deriveCriteria({ cookVolume: "5.5", heating: "pressure_ih", installWidth: "under27" }),
-];
+/** module の代表回答から hard-match 回帰ゲートを組み立てる（回答なしmoduleはスキップ） */
+function buildHardMatchRegressionGates(
+  module: CategoryModule<unknown, CatalogProduct>,
+  products: CatalogProduct[]
+): QualityGateResult[] {
+  if (!module.regressionSampleAnswers || module.regressionSampleAnswers.length === 0) {
+    return [];
+  }
+  const sampleCriteria = module.regressionSampleAnswers.map((answers) =>
+    module.deriveCriteria(answers)
+  );
+  return [
+    hardConditionRegressionGate(
+      products,
+      (p, criteria) => module.hardMatch(p, criteria),
+      sampleCriteria
+    ),
+  ];
+}
+
+/** カテゴリ固有ゲートを products（共通ベース型）に適用する */
+function moduleQualityGates(
+  module: CategoryModule<unknown, CatalogProduct>,
+  products: CatalogProduct[]
+): QualityGateResult[] {
+  if (!module.qualityGates) return [];
+  return module.qualityGates(products as never);
+}
 
 /**
  * データ統合パイプライン（プロンプト§6, §7）。
  * fetch → normalize → 品質ゲート7種 → staging → valid → publish を実行する。
+ * カテゴリ固有のゲート・回帰条件は module から取得し、汎用的に動作する。
  * ゲート失敗時は publish せず rejected で記録する（条件は自動緩和しない）。
  */
 export async function runIngest(
@@ -63,7 +83,7 @@ export async function runIngest(
     const normalized = await adapter.normalize(fetched, { categoryKey, now });
 
     const products = normalized.products as CatalogProduct[];
-    const riceProducts = normalized.products as RiceCookerProduct[];
+    const module = getModule(categoryKey);
 
     // 前回公開版の商品数（version回帰ゲート用）
     const previousActiveVersion = await getActiveVersionId(db, categoryKey);
@@ -81,13 +101,8 @@ export async function runIngest(
       schemaGate(normalized.rejectedCount),
       countGate(products.length),
       uniquenessGate(products),
-      rangeGate(riceProducts),
-      fixtureGate(riceProducts),
-      hardConditionRegressionGate(
-        riceProducts,
-        (p, criteria) => riceCookerModule.hardMatch(p, criteria as RiceCookerCriteria),
-        REGRESSION_SAMPLE_CRITERIA
-      ),
+      ...moduleQualityGates(module, products),
+      ...buildHardMatchRegressionGates(module, products),
       versionRegressionGate(products.length, previousCount),
     ];
 

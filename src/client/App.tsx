@@ -114,7 +114,7 @@ export default function App() {
   return (
     <main>
       <header className="app-header">
-        <span className="logo">炊飯器選び診断</span>
+        <span className="logo">{config?.copy.appTitle}</span>
         {screen === "questions" && flow && (
           <>
             {result ? (
@@ -133,7 +133,7 @@ export default function App() {
       </header>
 
       {screen === "loading" && <p className="note">読み込み中…</p>}
-      {screen === "start" && <StartScreen onStart={handleStart} />}
+      {screen === "start" && config && <StartScreen copy={config.copy} onStart={handleStart} />}
       {screen === "questions" && question && flow && (
         <QuestionScreen
           question={question}
@@ -144,8 +144,13 @@ export default function App() {
           loading={loading}
         />
       )}
-      {screen === "result" && result && (
-        <ResultScreen result={result} onRestart={handleRestart} onEditAnswers={handleEditAnswers} />
+      {screen === "result" && result && config && (
+        <ResultScreen
+          result={result}
+          copy={config.copy}
+          onRestart={handleRestart}
+          onEditAnswers={handleEditAnswers}
+        />
       )}
       {loading && screen === "questions" && <p className="note">候補を計算しています…</p>}
       {error && screen !== "loading" && <p className="note error">{error}</p>}
