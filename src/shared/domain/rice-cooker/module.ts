@@ -6,7 +6,7 @@ import type {
   ScoreResult,
   SpecDisplayItem,
 } from "../types";
-import { BUDGET_LIMIT, CURRENT_YEAR, INSTALL_WIDTH_MM } from "./types";
+import { BUDGET_BOUNDS, CURRENT_YEAR, INSTALL_WIDTH_MM } from "./types";
 import { QUESTIONS, QUESTION_KEYS } from "./questions";
 import { activeQuestionKeys } from "../flow";
 import type {
@@ -37,6 +37,17 @@ export const HEATING_LABELS: Record<HeatingMethod, string> = {
 /** スコアの理論上の最大値（fit3 + heating2 + feature3 + budget2 + freshness1） */
 export const MAX_SCORE = 11;
 
+/**
+ * 回答条件ごとに到達可能な最大スコア。
+ * 「加熱方式こだわらない」「予算こだわらない」は最大1.5/2点なので、
+ * これで正規化することで「一致度%」が回答内容によっては100%に届かない問題を解消する。
+ */
+export function attainableMaxScore(criteria: RiceCookerCriteria): number {
+  const heating = criteria.heatingPreference === "any" ? 1.5 : 2;
+  const budget = criteria.budgetYen.min === null && criteria.budgetYen.max === null ? 1.5 : 2;
+  return round1(3 + heating + 3 + budget + 1);
+}
+
 function parseFloatOrNull(value: string | undefined): number | null {
   if (value === undefined) return null;
   const n = Number.parseFloat(value);
@@ -60,10 +71,10 @@ export function deriveCriteria(answers: AnswerRecord): RiceCookerCriteria {
   return {
     requiredCapacityGou: cookVolume,
     heatingPreference: heating,
-    budgetMaxYen:
-      budget !== undefined && budget !== "any"
-        ? BUDGET_LIMIT[budget as keyof typeof BUDGET_LIMIT]
-        : null,
+    budgetYen:
+      budget !== undefined
+        ? BUDGET_BOUNDS[budget as keyof typeof BUDGET_BOUNDS]
+        : { min: null, max: null },
     priority,
     useTacook,
     installWidthMm: installWidth,
@@ -213,13 +224,13 @@ function budgetScore(
   criteria: RiceCookerCriteria,
   offers?: ProductOffer[]
 ): number {
-  const budget = criteria.budgetMaxYen;
-  if (budget === null) return 1.5; // 予算制約なし
+  const { min, max } = criteria.budgetYen;
+  if (min === null && max === null) return 1.5; // 予算制約なし
   const price = effectivePriceYen(product, offers);
   if (price === null) return 1.5; // 価格不明は中立（不当に上下させない）
-  if (price <= budget) return 2;
-  if (price <= budget * 1.2) return 1;
-  return 0;
+  if (max !== null && price > max) return price <= max * 1.2 ? 1 : 0;
+  if (min !== null && price < min) return price >= min * 0.8 ? 1 : 0;
+  return 2;
 }
 
 export function round1(n: number): number {
@@ -322,13 +333,23 @@ export function explain(
     });
   }
 
-  const budget = criteria.budgetMaxYen;
+  const { min, max } = criteria.budgetYen;
   const price = effectivePriceYen(product, offers);
-  if (budget !== null && price !== null) {
-    if (price <= budget) {
-      reasons.push({ code: "budget_fit", text: `価格が予算内（${price.toLocaleString()}円）` });
-    } else if (price <= budget * 1.2) {
+  if ((min !== null || max !== null) && price !== null) {
+    if (max !== null && price > max && price <= max * 1.2) {
       reasons.push({ code: "price_near_budget", text: "価格が予算の上限に近い" });
+    } else if (max !== null && price > max) {
+      reasons.push({
+        code: "price_over_budget",
+        text: `価格が予算の上限（${max.toLocaleString()}円）を超える`,
+      });
+    } else if (min !== null && price < min) {
+      reasons.push({
+        code: "price_below_budget",
+        text: `価格が予算の目安（${min.toLocaleString()}円以上）を下回る`,
+      });
+    } else {
+      reasons.push({ code: "budget_fit", text: `価格が予算内（${price.toLocaleString()}円）` });
     }
   }
 

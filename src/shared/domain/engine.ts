@@ -61,7 +61,7 @@ export function recommend<C, P extends CatalogProduct>(
       noMatch: false,
       noMatchReasons: [],
       warnings: ["もう少し質問に答えると候補を表示できます。"],
-      maxScore: module.maxScore,
+      maxScore: module.attainableMaxScore ? module.attainableMaxScore(criteria) : module.maxScore,
       scoreLabels: module.scoreLabels,
     };
   }
@@ -122,7 +122,7 @@ export function recommend<C, P extends CatalogProduct>(
     noMatch: hardPassed.length === 0,
     noMatchReasons: [...noMatchReasons],
     warnings,
-    maxScore: module.maxScore,
+    maxScore: module.attainableMaxScore ? module.attainableMaxScore(criteria) : module.maxScore,
     scoreLabels: module.scoreLabels,
   };
 }

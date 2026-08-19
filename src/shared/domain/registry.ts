@@ -4,6 +4,7 @@ import { QUESTIONS } from "./rice-cooker/questions";
 import {
   SCORE_LABELS,
   MAX_SCORE,
+  attainableMaxScore,
   buildWarnings,
   canShowPartialResult,
   deriveCriteria,
@@ -26,6 +27,7 @@ export const riceCookerModule: CategoryModule<RiceCookerCriteria, RiceCookerProd
   buildWarnings,
   scoreLabels: SCORE_LABELS,
   maxScore: MAX_SCORE,
+  attainableMaxScore,
   formatSpecs,
 };
 

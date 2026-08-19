@@ -93,6 +93,8 @@ export interface CategoryModule<C, P extends CatalogProduct> {
   scoreLabels: Record<string, string>;
   /** スコアの理論上の最大値（一致度の計算に使用） */
   maxScore: number;
+  /** 回答条件ごとに到達可能な最大スコア（一致度%の正規化に使用。未定義なら maxScore） */
+  attainableMaxScore?(criteria: C): number;
   /** 商品カードに表示するスペック項目（カテゴリ固有の単位・文言） */
   formatSpecs(product: P): SpecDisplayItem[];
 }

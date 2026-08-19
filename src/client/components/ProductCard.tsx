@@ -13,6 +13,15 @@ function formatPrice(value: number | null): string {
   return value == null ? "オープン価格" : `¥${value.toLocaleString("ja-JP")}〜`;
 }
 
+/** 表示価格: 実売オファー最安値を優先し、なければカタログ参考価格 */
+function effectivePriceYen(candidate: CandidateResponse): number | null {
+  const prices = candidate.offers
+    .map((o) => o.priceMinor)
+    .filter((p): p is number => p !== null && p > 0);
+  if (prices.length > 0) return Math.min(...prices) / 100;
+  return candidate.product.referencePriceYen;
+}
+
 function matchPercent(totalScore: number, maxScore: number): number {
   if (maxScore <= 0) return 0;
   return Math.round((totalScore / maxScore) * 100);
@@ -51,7 +60,9 @@ export function ProductCard({ candidate, rank, maxScore, scoreLabels, expanded, 
             {item.value}
           </span>
         ))}
-        <span className="price">{formatPrice(product.referencePriceYen)}</span>
+        <span className="price" title="実売最安値">
+          {formatPrice(effectivePriceYen(candidate))}
+        </span>
       </div>
 
       <ul className="reasons">

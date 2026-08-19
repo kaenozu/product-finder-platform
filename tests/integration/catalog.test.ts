@@ -80,6 +80,19 @@ describe("catalog repository", () => {
     expect(await getActiveProductById(db(), CATEGORY, "p-3")).toBeNull();
   });
 
+  it("referencePriceYenがDBに永続化され復元できる", async () => {
+    await ensureCatalogState(db(), CATEGORY);
+    const p1 = { ...makeProduct("p-1"), referencePriceYen: 42500 };
+    const versionId = await createStagingVersion(db(), CATEGORY, "test", 1);
+    await insertProducts(db(), versionId, [p1]);
+    await publishVersion(db(), CATEGORY, versionId);
+
+    const active = await listActiveProducts(db(), CATEGORY);
+    expect(active[0].referencePriceYen).toBe(42500);
+    const detail = await getActiveProductById(db(), CATEGORY, "p-1");
+    expect(detail?.referencePriceYen).toBe(42500);
+  });
+
   it("offersの登録と取得ができる", async () => {
     await ensureCatalogState(db(), CATEGORY);
     const versionId = await createStagingVersion(db(), CATEGORY, "test", 1);
