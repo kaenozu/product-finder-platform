@@ -34,10 +34,11 @@ export default function App() {
   }, []);
 
   async function evaluate(cleanAnswers: Record<string, string>) {
+    if (!config) return;
     setLoading(true);
     setError(null);
     try {
-      const res = await postEvaluate(cleanAnswers);
+      const res = await postEvaluate(config.categoryKey, cleanAnswers);
       setResult(res);
       setAnswers(cleanAnswers);
       setScreen("result");
@@ -115,9 +116,19 @@ export default function App() {
       <header className="app-header">
         <span className="logo">炊飯器選び診断</span>
         {screen === "questions" && flow && (
-          <button className="link" type="button" onClick={handleEditAnswers}>
-            結果へ
-          </button>
+          <>
+            {result ? (
+              <button className="link" type="button" onClick={() => setScreen("result")}>
+                結果へ
+              </button>
+            ) : (
+              flow.answered >= 2 && (
+                <button className="link" type="button" onClick={handlePreview}>
+                  候補を見る
+                </button>
+              )
+            )}
+          </>
         )}
       </header>
 

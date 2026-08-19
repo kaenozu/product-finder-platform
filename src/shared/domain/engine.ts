@@ -29,6 +29,8 @@ export interface RecommendationResult<C, P extends CatalogProduct> {
   noMatch: boolean;
   noMatchReasons: string[];
   warnings: string[];
+  maxScore: number;
+  scoreLabels: Record<string, string>;
 }
 
 /** 同点時の安定ソート用比較（product_idの昇順） */
@@ -50,6 +52,20 @@ export function recommend<C, P extends CatalogProduct>(
   const activeKeys = activeQuestionKeys(module.questions, answers);
   const answeredCount = activeKeys.filter((k) => answers[k] !== undefined).length;
 
+  if (!module.canShowPartialResult(answers, criteria)) {
+    return {
+      status: "partial",
+      progress: { answered: answeredCount, estimatedTotal: activeKeys.length },
+      criteria,
+      candidates: [],
+      noMatch: false,
+      noMatchReasons: [],
+      warnings: ["もう少し質問に答えると候補を表示できます。"],
+      maxScore: module.maxScore,
+      scoreLabels: module.scoreLabels,
+    };
+  }
+
   const hardResults = new Map<string, HardMatchResult>();
   const hardPassed: P[] = [];
   const noMatchReasons = new Set<string>();
@@ -67,8 +83,8 @@ export function recommend<C, P extends CatalogProduct>(
   }
 
   const scored = hardPassed.map((product) => {
-    const score = module.score(product, criteria);
-    const reasons = module.explain(product, criteria);
+    const score = module.score(product, criteria, offersByProduct.get(product.productId));
+    const reasons = module.explain(product, criteria, offersByProduct.get(product.productId));
     return { product, score, reasons };
   });
 
@@ -106,5 +122,7 @@ export function recommend<C, P extends CatalogProduct>(
     noMatch: hardPassed.length === 0,
     noMatchReasons: [...noMatchReasons],
     warnings,
+    maxScore: module.maxScore,
+    scoreLabels: module.scoreLabels,
   };
 }

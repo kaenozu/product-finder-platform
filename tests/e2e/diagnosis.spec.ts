@@ -56,4 +56,49 @@ test.describe("炊飯器選び診断", () => {
     await page.getByRole("button", { name: "← 戻る" }).click();
     await expect(page.getByRole("heading", { name: "一回に炊くご飯の量は?" })).toBeVisible();
   });
+
+  test("進捗の分母が固定され回答ごとに増えない（1/1→2/2→3/3 を防ぐ）", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("button", { name: "診断をはじめる" }).click();
+
+    const firstText = await page.getByRole("progressbar").getAttribute("aria-valuetext");
+    await page.getByRole("button", { name: "5.5合（5人以上）" }).click();
+    const secondText = await page.getByRole("progressbar").getAttribute("aria-valuetext");
+    await page.getByRole("button", { name: "特にこだわらない" }).click();
+    const thirdText = await page.getByRole("progressbar").getAttribute("aria-valuetext");
+
+    expect(firstText).toContain("全6問程度");
+    expect(secondText).toContain("全6問程度");
+    expect(thirdText).toContain("全6問程度");
+  });
+
+  test("1問だけでは途中プレビューボタンが出ない", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("button", { name: "診断をはじめる" }).click();
+    await page.getByRole("button", { name: "5.5合（5人以上）" }).click();
+    await expect(page.getByRole("button", { name: "この条件で候補を見る" })).toBeHidden();
+    await expect(page.getByRole("heading", { name: "加熱方式はこだわりますか?" })).toBeVisible();
+  });
+
+  test("結果画面に一致度%と日本語ラベルのスコア内訳・単位付きスペックが表示される", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    await page.getByRole("button", { name: "診断をはじめる" }).click();
+
+    await page.getByRole("button", { name: "5.5合（5人以上）" }).click();
+    await page.getByRole("button", { name: "特にこだわらない" }).click();
+    await page.getByRole("button", { name: "こだわらない" }).click();
+    await page.getByRole("button", { name: "炊き上がりの味" }).click();
+    await page.getByRole("button", { name: "制限なし" }).click();
+
+    await expect(page.getByRole("heading", { name: "あなたに合う炊飯器" })).toBeVisible();
+    await expect(page.getByText(/一致度 \d+%/).first()).toBeVisible();
+    await expect(page.locator(".spec-chips span").first()).toContainText(/合/);
+    await page.locator(".product-card").first().getByRole("button", { name: "詳しく見る" }).click();
+    await expect(page.getByText("スコア内訳")).toBeVisible();
+    await expect(page.getByText("容量との相性")).toBeVisible();
+    await expect(page.getByText("加熱方式")).toBeVisible();
+    await expect(page.getByText("予算")).toBeVisible();
+  });
 });

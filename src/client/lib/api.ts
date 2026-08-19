@@ -1,9 +1,11 @@
-import type { QuestionDefinition, ProductOffer } from "../../shared/domain/types";
+import type { QuestionDefinition, ProductOffer, SpecDisplayItem } from "../../shared/domain/types";
 
 export interface ConfigResponse {
   categoryKey: string;
   questions: QuestionDefinition[];
   maxCandidates: number;
+  scoreLabels: Record<string, string>;
+  maxScore: number;
 }
 
 export interface CandidateResponse {
@@ -21,6 +23,7 @@ export interface CandidateResponse {
   reasons: Array<{ code: string; text: string }>;
   scoreBreakdown: Record<string, number>;
   totalScore: number;
+  specItems: SpecDisplayItem[];
 }
 
 export interface EvaluateResponse {
@@ -30,6 +33,8 @@ export interface EvaluateResponse {
   noMatch: boolean;
   noMatchReasons: string[];
   warnings: string[];
+  maxScore: number;
+  scoreLabels: Record<string, string>;
   candidates: CandidateResponse[];
 }
 
@@ -52,9 +57,12 @@ export function fetchConfig(): Promise<ConfigResponse> {
   return request<ConfigResponse>("/api/config");
 }
 
-export function postEvaluate(answers: Record<string, string>): Promise<EvaluateResponse> {
+export function postEvaluate(
+  categoryKey: string,
+  answers: Record<string, string>
+): Promise<EvaluateResponse> {
   return request<EvaluateResponse>("/api/diagnosis/evaluate", {
     method: "POST",
-    body: JSON.stringify({ categoryKey: "rice-cooker", answers }),
+    body: JSON.stringify({ categoryKey, answers }),
   });
 }

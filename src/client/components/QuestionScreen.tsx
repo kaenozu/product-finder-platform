@@ -12,7 +12,7 @@ interface Props {
 
 export function QuestionScreen({ question, flow, onSelect, onBack, onPreview, loading }: Props) {
   const canPreview = flow.answered >= 2;
-  const progress = flow.estimatedTotal > 0 ? flow.answered / flow.estimatedTotal : 0;
+  const progress = flow.totalSteps > 0 ? flow.answered / flow.totalSteps : 0;
 
   return (
     <section className="question" aria-live="polite">
@@ -20,26 +20,27 @@ export function QuestionScreen({ question, flow, onSelect, onBack, onPreview, lo
         className="progress"
         role="progressbar"
         aria-valuenow={flow.answered}
-        aria-valuemax={flow.estimatedTotal}
+        aria-valuemin={0}
+        aria-valuemax={flow.totalSteps}
+        aria-valuetext={`質問${flow.answered + 1}（全${flow.totalSteps}問程度）`}
       >
         <div
           className="progress-fill"
-          style={{ width: `${Math.min(100, Math.round(progress * 100))}%` }}
+          style={{ width: `${Math.min(100, Math.max(0, Math.round(progress * 100)))}%` }}
         />
       </div>
-      <p className="eyebrow">
-        質問 {Math.min(flow.answered + 1, flow.estimatedTotal)} / {flow.estimatedTotal}
-      </p>
+      <p className="eyebrow">質問 {flow.answered + 1}</p>
       <h2>{question.title}</h2>
       {question.description && <p className="lead">{question.description}</p>}
 
-      <div className="options" role="radiogroup" aria-label={question.title}>
+      <div className="options" role="group" aria-label={question.title}>
         {question.options.map((option) => (
           <button
             key={option.value}
             className="option"
             type="button"
             disabled={loading}
+            aria-pressed={false}
             onClick={() => onSelect(option.value)}
           >
             <span className="option-label">{option.label}</span>

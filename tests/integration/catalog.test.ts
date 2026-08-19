@@ -181,7 +181,14 @@ describe("API handlers（D1連動）", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       status: string;
-      candidates: Array<{ totalScore: number; sources: unknown[] }>;
+      maxScore: number;
+      scoreLabels: Record<string, string>;
+      candidates: Array<{
+        totalScore: number;
+        sources: unknown[];
+        specItems: Array<{ key: string; label: string; value: string }>;
+        scoreBreakdown: Record<string, number>;
+      }>;
       noMatch: boolean;
     };
     expect(body.status).toBe("final");
@@ -193,6 +200,24 @@ describe("API handlers（D1連動）", () => {
         body.candidates[i].totalScore
       );
     }
+    // メタデータと表示用スペック・日本語ラベル
+    expect(body.maxScore).toBeGreaterThan(0);
+    expect(body.scoreLabels.fitScore).toBe("容量との相性");
+    for (const c of body.candidates) {
+      expect(c.specItems.length).toBeGreaterThan(0);
+      expect(c.specItems[0].value).toMatch(/合$/);
+      expect(Object.keys(c.scoreBreakdown).length).toBeGreaterThan(0);
+    }
+  });
+
+  it("evaluate: 1問だけの回答で400（canShowPartialResultの保証）", async () => {
+    const res = await handleEvaluate(workerEnv, {
+      categoryKey: "rice-cooker",
+      answers: { cookVolume: "5.5" },
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe("insufficient_answers");
   });
 
   it("evaluate: 不正な回答キーで400", async () => {
@@ -237,10 +262,12 @@ describe("API handlers（D1連動）", () => {
     const body = (await res.json()) as {
       product: { productId: string };
       sources: Array<{ url: string }>;
+      specItems: Array<{ key: string; value: string }>;
     };
     expect(body.product.productId).toBe("panasonic-sr-x910e");
     expect(body.sources.length).toBeGreaterThan(0);
     expect(body.sources[0].url).toMatch(/^https:\/\//);
+    expect(body.specItems.some((s) => s.value.endsWith("合"))).toBe(true);
   });
 
   it("product detail: 存在しない商品で404", async () => {

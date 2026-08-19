@@ -1,8 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { recommend, MAX_CANDIDATES } from "../../src/shared/domain/engine";
+import { estimateTotalSteps } from "../../src/shared/domain/flow";
 import { riceCookerModule } from "../../src/shared/domain/registry";
 import {
   deriveCriteria,
+  formatSpecs,
   hardMatch,
   score,
   explain,
@@ -446,5 +448,216 @@ describe("30商品PoC（fetch → normalize → criteria → hardMatch → score
       expect(Array.isArray(reasons)).toBe(true);
       expect(typeof hm.pass).toBe("boolean");
     }
+  });
+});
+
+describe("formatSpecs（表示フォーマット）", () => {
+  const p = makeProduct({
+    productId: "spec1",
+    specs: {
+      capacityGou: 5.5,
+      heatingMethod: "micom",
+      powerW: null,
+      weightKg: 4.5,
+      widthMm: 250,
+      depthMm: 300,
+      heightMm: 220,
+      keepWarmHours: null,
+      innerPot: null,
+      features: [],
+      releaseYear: null,
+    },
+  });
+
+  it("容量に合単位・加熱方式に日本語ラベルを出す", () => {
+    const items = formatSpecs(p);
+    const byKey = Object.fromEntries(items.map((i) => [i.key, i.value]));
+    expect(byKey.capacity).toBe("5.5合");
+    expect(byKey.heating).toBe("マイコン");
+  });
+
+  it("幅はcm表記・重量は約表記", () => {
+    const items = formatSpecs(p);
+    const byKey = Object.fromEntries(items.map((i) => [i.key, i.value]));
+    expect(byKey.width).toBe("25.0cm");
+    expect(byKey.weight).toBe("約4.5kg");
+  });
+
+  it("null項目は項目ごと出さない", () => {
+    const minimal = makeProduct({
+      productId: "spec2",
+      specs: {
+        capacityGou: 3,
+        heatingMethod: "ih",
+        powerW: null,
+        weightKg: null,
+        widthMm: null,
+        depthMm: null,
+        heightMm: null,
+        keepWarmHours: null,
+        innerPot: null,
+        features: [],
+        releaseYear: null,
+      },
+    });
+    const items = formatSpecs(minimal);
+    expect(items.find((i) => i.key === "width")).toBeUndefined();
+    expect(items.find((i) => i.key === "weight")).toBeUndefined();
+  });
+});
+
+describe("estimateTotalSteps（進捗分母が毎回増えないこと）", () => {
+  it("回答に関係なく固定の最大ステップ数（分母が毎回増えない）", () => {
+    const atStart = estimateTotalSteps(riceCookerModule.questions);
+    const afterOne = estimateTotalSteps(riceCookerModule.questions);
+    const afterTwo = estimateTotalSteps(riceCookerModule.questions);
+    // 1/1→2/2→3/3 の現象が起きない（分母が回答ごとに増えない）
+    expect(afterOne).toBe(atStart);
+    expect(afterTwo).toBe(atStart);
+    expect(atStart).toBeLessThanOrEqual(riceCookerModule.questions.length);
+  });
+
+  it("最大分岐（functions）の質問数に一致する", () => {
+    expect(estimateTotalSteps(riceCookerModule.questions)).toBe(6);
+  });
+});
+
+describe("recommend ガードと結果メタデータ", () => {
+  it("1問だけの回答では候補を出さず警告（canShowPartialResultの保証）", async () => {
+    const fetched = await adapter.fetch(new ctxCtor());
+    const { products } = await adapter.normalize(fetched, ctxCtor());
+    const result = recommend(riceCookerModule, { cookVolume: "5.5" }, products, new Map());
+    expect(result.status).toBe("partial");
+    expect(result.candidates).toEqual([]);
+    expect(result.warnings.length).toBeGreaterThan(0);
+  });
+
+  it("resultにmaxScoreとscoreLabelsが載る", async () => {
+    const fetched = await adapter.fetch(new ctxCtor());
+    const { products } = await adapter.normalize(fetched, ctxCtor());
+    const result = recommend(riceCookerModule, FULL_ANSWERS, products, new Map());
+    expect(result.maxScore).toBe(riceCookerModule.maxScore);
+    expect(result.maxScore).toBeGreaterThan(0);
+    expect(result.scoreLabels).toEqual(riceCookerModule.scoreLabels);
+    expect(result.scoreLabels.fitScore).toBeDefined();
+  });
+});
+
+function ctxCtor() {
+  return { categoryKey: "rice-cooker", now: new Date("2026-08-19T00:00:00Z") };
+}
+
+describe("budgetScore（実売offer価格ベース）", () => {
+  const p = makeProduct({
+    productId: "price1",
+    referencePriceYen: 30000,
+    specs: {
+      capacityGou: 3,
+      heatingMethod: "micom",
+      powerW: null,
+      weightKg: null,
+      widthMm: null,
+      depthMm: null,
+      heightMm: null,
+      keepWarmHours: null,
+      innerPot: null,
+      features: [],
+      releaseYear: null,
+    },
+  });
+  const offer = (priceMinor: number) => ({
+    productId: "price1",
+    providerKey: "test",
+    providerItemId: "x",
+    outboundUrl: "https://example.com/x",
+    priceMinor,
+    currency: "JPY",
+    availability: "in_stock",
+    updatedAt: "2026-08-19",
+  });
+
+  it("offer価格が予算内なら満点・予算超過なら0", () => {
+    const criteria = deriveCriteria({ cookVolume: "3", budget: "10to20k" });
+    // priceMinor は 円×100（例: 15000円=1500000）
+    expect(budgetScoreViaScore(p, criteria, [offer(1500000)])).toBe(2);
+    expect(budgetScoreViaScore(p, criteria, [offer(3000000)])).toBe(0);
+  });
+
+  it("価格不明（offer/referenceともnull）なら中立", () => {
+    const unknown = makeProduct({
+      productId: "price2",
+      referencePriceYen: null,
+      specs: {
+        capacityGou: 3,
+        heatingMethod: "micom",
+        powerW: null,
+        weightKg: null,
+        widthMm: null,
+        depthMm: null,
+        heightMm: null,
+        keepWarmHours: null,
+        innerPot: null,
+        features: [],
+        releaseYear: null,
+      },
+    });
+    const criteria = deriveCriteria({ cookVolume: "3", budget: "under10k" });
+    expect(budgetScoreViaScore(unknown, criteria, [offer(null)])).toBe(1.5);
+  });
+});
+
+function budgetScoreViaScore(
+  product: RiceCookerProduct,
+  criteria: ReturnType<typeof deriveCriteria>,
+  offers: Array<{ priceMinor: number | null }>
+) {
+  const s = score(product, criteria, offers as never);
+  return s.breakdown.budgetScore;
+}
+
+describe("featureScore（重視ポイントの再設計）", () => {
+  const baseSpecs = {
+    capacityGou: 5.5,
+    powerW: null,
+    weightKg: null,
+    widthMm: null,
+    depthMm: null,
+    heightMm: null,
+    keepWarmHours: null,
+    innerPot: null,
+    features: [] as string[],
+    releaseYear: null,
+  };
+
+  it("手入れ（ease）は軽さで決まる", () => {
+    const light = makeProduct({
+      productId: "e1",
+      specs: { ...baseSpecs, heatingMethod: "micom", weightKg: 3 },
+    });
+    const heavy = makeProduct({
+      productId: "e2",
+      specs: { ...baseSpecs, heatingMethod: "micom", weightKg: 6 },
+    });
+    const criteria = deriveCriteria({ cookVolume: "5.5", priority: "ease" });
+    const sLight = score(light, criteria);
+    const sHeavy = score(heavy, criteria);
+    expect(sLight.breakdown.featureScore).toBe(3);
+    expect(sHeavy.breakdown.featureScore).toBe(1);
+  });
+
+  it("味（taste）は加熱方式ベースで、玄米/発芽玄米対応なら加点", () => {
+    const pressure = makeProduct({
+      productId: "t1",
+      specs: { ...baseSpecs, heatingMethod: "pressure_ih", features: ["germinated"] },
+    });
+    const micom = makeProduct({
+      productId: "t2",
+      specs: { ...baseSpecs, heatingMethod: "micom" },
+    });
+    const criteria = deriveCriteria({ cookVolume: "5.5", priority: "taste" });
+    const sP = score(pressure, criteria);
+    const sM = score(micom, criteria);
+    expect(sP.breakdown.featureScore).toBeGreaterThan(sM.breakdown.featureScore);
+    expect(sP.breakdown.featureScore).toBeLessThanOrEqual(3);
   });
 });
