@@ -17,7 +17,7 @@ export default {
 
     if (isApi) {
       if (pathname === "/api/health" || pathname === "/api/health/") {
-        return json({ ok: true, service: "kuraberu-diagnosis", ts: new Date().toISOString() });
+        return json({ ok: true, service: "product-finder-platform", ts: new Date().toISOString() });
       }
       if (pathname === "/api/dev/seed" || pathname === "/api/dev/seed/") {
         // ローカル開発/e2e専用（本番ではDEV_SEED未設定のため403）
