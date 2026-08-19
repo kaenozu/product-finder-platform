@@ -265,7 +265,7 @@ export async function getActiveProductById(
   return row ? rowToProduct(row) : null;
 }
 
-/** 特定バージョン・商品群のオファー一覧 */
+/** 特定バージョン・商品群のオファー一覧（カテゴリのactive版のみ） */
 export async function listOffersForProducts(
   db: D1Database,
   categoryKey: string,
@@ -279,9 +279,10 @@ export async function listOffersForProducts(
               o.price_minor, o.currency, o.availability, o.updated_at
        FROM product_offers o
        JOIN catalog_state s ON s.active_version_id = o.version_id
+       JOIN catalog_versions v ON v.version_id = o.version_id AND v.category_key = ?
        WHERE o.product_id IN (${placeholders})`
     )
-    .bind(...productIds)
+    .bind(categoryKey, ...productIds)
     .all<OfferRow>();
   return (rows.results ?? []).map(rowToOffer);
 }
