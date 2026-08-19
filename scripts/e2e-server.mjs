@@ -35,7 +35,14 @@ async function waitForHealth() {
 }
 
 await runOnce(PNPM, ["build"]);
-await runOnce(PNPM, ["wrangler", "d1", "migrations", "apply", "kuraberu-diagnosis", "--local"]);
+await runOnce(PNPM, [
+  "wrangler",
+  "d1",
+  "migrations",
+  "apply",
+  "product-finder-platform",
+  "--local",
+]);
 
 const dev = spawn(PNPM, ["wrangler", "dev", "--port", PORT, "--var", "DEV_SEED:1"], {
   stdio: "inherit",

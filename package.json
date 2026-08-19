@@ -1,5 +1,5 @@
 {
-  "name": "kuraberu-diagnosis",
+  "name": "product-finder-platform",
   "private": true,
   "type": "module",
   "version": "0.1.0",
@@ -20,8 +20,8 @@
     "test:watch": "vitest",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "e2e": "playwright test",
-    "db:migrate": "wrangler d1 migrations apply kuraberu-diagnosis --local",
-    "db:reset": "wrangler d1 execute kuraberu-diagnosis --local --command \"DELETE FROM product_offers; DELETE FROM products; DELETE FROM catalog_versions; DELETE FROM catalog_state; DELETE FROM ingest_runs;\"",
+    "db:migrate": "wrangler d1 migrations apply product-finder-platform --local",
+    "db:reset": "wrangler d1 execute product-finder-platform --local --command \"DELETE FROM product_offers; DELETE FROM products; DELETE FROM catalog_versions; DELETE FROM catalog_state; DELETE FROM ingest_runs;\"",
     "check:deploy": "wrangler deploy --dry-run",
     "verify": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm test:integration && pnpm build && git diff --check"
   },
