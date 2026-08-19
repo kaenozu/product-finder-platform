@@ -30,7 +30,7 @@ export default {
         return handleDevSeed(env);
       }
       if (pathname === "/api/config" || pathname === "/api/config/") {
-        return handleConfig();
+        return handleConfig(request);
       }
       if (pathname === "/api/diagnosis/evaluate" || pathname === "/api/diagnosis/evaluate/") {
         if (request.method !== "POST") {

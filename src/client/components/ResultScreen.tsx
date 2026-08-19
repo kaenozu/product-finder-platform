@@ -48,6 +48,8 @@ export function ResultScreen({ result, onRestart, onEditAnswers }: Props) {
                 key={c.product.productId}
                 candidate={c}
                 rank={i + 1}
+                maxScore={result.maxScore}
+                scoreLabels={result.scoreLabels}
                 expanded={expanded === c.product.productId}
                 onToggle={() =>
                   setExpanded(expanded === c.product.productId ? null : c.product.productId)

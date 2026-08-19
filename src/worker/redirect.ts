@@ -1,15 +1,10 @@
 import type { Env } from "./env";
 import { json } from "./http";
 
-async function hashIp(ip: string): Promise<string> {
-  const data = new TextEncoder().encode(`product-finder:${ip}`);
-  const digest = await crypto.subtle.digest("SHA-256", data);
-  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-
 /**
- * /go/:provider/:token — アフィリエイト遷移の計測付きリダイレクト。
+ * /go/:provider/:token — アフィリエイト遷移のリダイレクト。
  * 有効なhttpsの outbound_url のみ転送（オープンリダイレクト対策）。
+ * 計測はクリック回数に必要な最小限（商品・バージョンのみ）に留め、IP・UA・refererは保存しない。
  */
 export async function handleRedirect(
   env: Env,
@@ -42,12 +37,11 @@ export async function handleRedirect(
   }
 
   try {
-    const cf = request.headers.get("cf-connecting-ip") ?? "unknown";
     const id = crypto.randomUUID();
     await env.DB.prepare(
       `INSERT INTO click_events
-        (id, provider_key, provider_item_id, product_id, category_key, version_id, clicked_at, referer, user_agent, ip_hash)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        (id, provider_key, provider_item_id, product_id, category_key, version_id, clicked_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
     )
       .bind(
         id,
@@ -56,15 +50,13 @@ export async function handleRedirect(
         offer.product_id,
         offer.category_key,
         offer.version_id,
-        new Date().toISOString(),
-        request.headers.get("referer"),
-        request.headers.get("user-agent"),
-        await hashIp(cf)
+        new Date().toISOString()
       )
       .run();
   } catch {
     // 計測失敗でもリダイレクトは続行する（ユーザー体験を妨げない）
   }
 
+  void request;
   return Response.redirect(offer.outbound_url, 302);
 }

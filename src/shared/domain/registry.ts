@@ -2,10 +2,13 @@ import type { CatalogProduct, CategoryModule } from "./types";
 import type { RiceCookerCriteria, RiceCookerProduct } from "./rice-cooker/types";
 import { QUESTIONS } from "./rice-cooker/questions";
 import {
+  SCORE_LABELS,
+  MAX_SCORE,
   buildWarnings,
   canShowPartialResult,
   deriveCriteria,
   explain,
+  formatSpecs,
   hardMatch,
   score,
   unansweredImportantKeys,
@@ -21,6 +24,9 @@ export const riceCookerModule: CategoryModule<RiceCookerCriteria, RiceCookerProd
   explain,
   unansweredImportantKeys,
   buildWarnings,
+  scoreLabels: SCORE_LABELS,
+  maxScore: MAX_SCORE,
+  formatSpecs,
 };
 
 const MODULES = new Map<string, CategoryModule<unknown, never>>([

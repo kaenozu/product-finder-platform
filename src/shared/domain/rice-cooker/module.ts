@@ -1,14 +1,41 @@
-import type { AnswerRecord, HardMatchResult, RecommendationReason, ScoreResult } from "../types";
+import type {
+  AnswerRecord,
+  HardMatchResult,
+  ProductOffer,
+  RecommendationReason,
+  ScoreResult,
+  SpecDisplayItem,
+} from "../types";
 import { BUDGET_LIMIT, CURRENT_YEAR, INSTALL_WIDTH_MM } from "./types";
 import { QUESTIONS, QUESTION_KEYS } from "./questions";
 import { activeQuestionKeys } from "../flow";
 import type {
+  HeatingMethod,
   HeatingPreference,
   PriorityPreference,
   RiceCookerAnswerKey,
   RiceCookerCriteria,
   RiceCookerProduct,
 } from "./types";
+
+/** スコア内訳キー→ユーザー向け表示ラベル */
+export const SCORE_LABELS: Record<string, string> = {
+  fitScore: "容量との相性",
+  heatingScore: "加熱方式",
+  featureScore: "重視ポイント",
+  budgetScore: "予算",
+  freshnessScore: "モデルの新しさ",
+};
+
+/** 加熱方式の表示ラベル */
+export const HEATING_LABELS: Record<HeatingMethod, string> = {
+  micom: "マイコン",
+  ih: "IH",
+  pressure_ih: "圧力IH",
+};
+
+/** スコアの理論上の最大値（fit3 + heating2 + feature3 + budget2 + freshness1） */
+export const MAX_SCORE = 11;
 
 function parseFloatOrNull(value: string | undefined): number | null {
   if (value === undefined) return null;
@@ -86,10 +113,26 @@ export function hardMatch(
 }
 
 /**
+ * 実効価格（円）: 実売オファー価格の最安値を最優先し、なければカタログ参考価格、それもなければnull。
+ * 価格データが無い間は予算スコアを中立に保ち、不当に上下させない。
+ */
+function effectivePriceYen(product: RiceCookerProduct, offers?: ProductOffer[]): number | null {
+  if (offers && offers.length > 0) {
+    const prices = offers.map((o) => o.priceMinor).filter((p): p is number => p !== null && p > 0);
+    if (prices.length > 0) return Math.min(...prices) / 100;
+  }
+  return product.referencePriceYen;
+}
+
+/**
  * スコアリング（ソフト条件）。fit + preference + feature + budget + freshness の合算。
  * 同点時はengine側でproduct_idの安定ソートを行う。
  */
-export function score(product: RiceCookerProduct, criteria: RiceCookerCriteria): ScoreResult {
+export function score(
+  product: RiceCookerProduct,
+  criteria: RiceCookerCriteria,
+  offers?: ProductOffer[]
+): ScoreResult {
   const breakdown: Record<string, number> = {};
 
   // fitScore: 容量の過不足
@@ -108,8 +151,8 @@ export function score(product: RiceCookerProduct, criteria: RiceCookerCriteria):
   // featureScore: 重視ポイントへの適合
   breakdown.featureScore = featureScore(product, criteria);
 
-  // budgetScore: 参考価格と予算
-  breakdown.budgetScore = budgetScore(product, criteria);
+  // budgetScore: 実効価格（実売offer最安値→参考価格の順）と予算
+  breakdown.budgetScore = budgetScore(product, criteria, offers);
 
   // freshnessScore: 発売年が新しいほど高く（不明なら中立）
   const age = product.specs.releaseYear === null ? null : CURRENT_YEAR - product.specs.releaseYear;
@@ -138,22 +181,25 @@ function featureScore(product: RiceCookerProduct, criteria: RiceCookerCriteria):
       }
       return Math.min(3, n);
     }
-    case "taste":
-      return product.specs.heatingMethod === "pressure_ih"
-        ? 3
-        : product.specs.heatingMethod === "ih"
-          ? 2
-          : 1;
+    case "taste": {
+      // 加熱方式をベースに、多彩な炊飯メニュー（玄米・発芽玄米）の対応で加点。最大3
+      const base =
+        product.specs.heatingMethod === "pressure_ih"
+          ? 3
+          : product.specs.heatingMethod === "ih"
+            ? 2
+            : 1;
+      const menu = features.has("germinated") || features.has("brown_rice") ? 1 : 0;
+      return Math.min(3, base + menu);
+    }
     case "keepwarm": {
       const hours = product.specs.keepWarmHours;
       return hours !== null && hours >= 12 ? 3 : hours !== null && hours >= 8 ? 2 : 1;
     }
     case "ease": {
+      // 軽さ（重量）を評価の主軸とする。本体が軽いほど取り回しやすい
       const weight = product.specs.weightKg;
-      return (
-        (product.specs.heatingMethod === "micom" ? 2 : 1) +
-        (weight !== null && weight <= 3.5 ? 1 : 0)
-      );
+      return weight === null ? 1 : weight <= 3.5 ? 3 : weight <= 5 ? 2 : 1;
     }
     case "compact": {
       const width = product.specs.widthMm;
@@ -162,10 +208,15 @@ function featureScore(product: RiceCookerProduct, criteria: RiceCookerCriteria):
   }
 }
 
-function budgetScore(product: RiceCookerProduct, criteria: RiceCookerCriteria): number {
+function budgetScore(
+  product: RiceCookerProduct,
+  criteria: RiceCookerCriteria,
+  offers?: ProductOffer[]
+): number {
   const budget = criteria.budgetMaxYen;
-  const price = product.referencePriceYen;
-  if (budget === null || price === null) return 1.5;
+  if (budget === null) return 1.5; // 予算制約なし
+  const price = effectivePriceYen(product, offers);
+  if (price === null) return 1.5; // 価格不明は中立（不当に上下させない）
   if (price <= budget) return 2;
   if (price <= budget * 1.2) return 1;
   return 0;
@@ -175,10 +226,30 @@ export function round1(n: number): number {
   return Math.round(n * 10) / 10;
 }
 
+/** 商品カードに表示するスペック項目（カテゴリ固有の単位・文言） */
+export function formatSpecs(product: RiceCookerProduct): SpecDisplayItem[] {
+  const items: SpecDisplayItem[] = [
+    { key: "capacity", label: "容量", value: `${product.specs.capacityGou}合` },
+    { key: "heating", label: "加熱方式", value: HEATING_LABELS[product.specs.heatingMethod] },
+  ];
+  if (product.specs.widthMm !== null) {
+    items.push({
+      key: "width",
+      label: "幅",
+      value: `${(product.specs.widthMm / 10).toFixed(1)}cm`,
+    });
+  }
+  if (product.specs.weightKg !== null) {
+    items.push({ key: "weight", label: "重量", value: `約${product.specs.weightKg}kg` });
+  }
+  return items;
+}
+
 /** 推薦理由の生成（reasonCode → 表示文言） */
 export function explain(
   product: RiceCookerProduct,
-  criteria: RiceCookerCriteria
+  criteria: RiceCookerCriteria,
+  offers?: ProductOffer[]
 ): RecommendationReason[] {
   const reasons: RecommendationReason[] = [];
   const diff = product.specs.capacityGou - criteria.requiredCapacityGou;
@@ -237,6 +308,13 @@ export function explain(
     reasons.push({ code: "taste_pressure", text: "圧力炊飯でふっくらとした炊き上がり" });
   }
 
+  if (criteria.priority === "ease" && product.specs.weightKg !== null) {
+    reasons.push({
+      code: "ease_lightweight",
+      text: `本体約${product.specs.weightKg}kgと軽量で取り回しやすい`,
+    });
+  }
+
   if (product.specs.releaseYear !== null && CURRENT_YEAR - product.specs.releaseYear <= 1) {
     reasons.push({
       code: "fresh_model",
@@ -245,12 +323,12 @@ export function explain(
   }
 
   const budget = criteria.budgetMaxYen;
-  const price = product.referencePriceYen;
+  const price = effectivePriceYen(product, offers);
   if (budget !== null && price !== null) {
     if (price <= budget) {
-      reasons.push({ code: "budget_fit", text: `参考価格が予算内（${price.toLocaleString()}円）` });
+      reasons.push({ code: "budget_fit", text: `価格が予算内（${price.toLocaleString()}円）` });
     } else if (price <= budget * 1.2) {
-      reasons.push({ code: "price_near_budget", text: "参考価格が予算の上限に近い" });
+      reasons.push({ code: "price_near_budget", text: "価格が予算の上限に近い" });
     }
   }
 

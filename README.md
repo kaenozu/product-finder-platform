@@ -52,7 +52,14 @@ pnpm check:deploy   # wrangler deploy --dry-run
 - 品質ゲート7種を通過したバージョンのみ publish（失敗時は rejected で条件自動緩和なし）
 - 価格はオープン価格のため `referencePriceYen` は原則 null（UIでは「オープン価格」表示）
 
+## 品質管理
+
+- `pnpm verify`（format/lint/typecheck/unit/integration/build）+ `pnpm e2e`（Playwright）を全修正で実行
+- GitHub Actions（`.github/workflows/ci.yml`）で push/PR 時に同一ゲートを自動実行
+
 ## 未実施（TODO）
 
 - 本番デプロイ（wrangler 未ログイン）
 - 楽天APIキー設定 → offers 収集・`/go/` リダイレクト有効化
+- カテゴリ追加（洗濯機など）の実証
+- SEO / OGタグ / 診断状態のURL共有

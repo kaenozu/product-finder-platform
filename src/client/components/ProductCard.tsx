@@ -3,6 +3,8 @@ import type { CandidateResponse } from "../lib/api";
 interface Props {
   candidate: CandidateResponse;
   rank: number;
+  maxScore: number;
+  scoreLabels: Record<string, string>;
   expanded: boolean;
   onToggle: () => void;
 }
@@ -11,14 +13,20 @@ function formatPrice(value: number | null): string {
   return value == null ? "オープン価格" : `¥${value.toLocaleString("ja-JP")}〜`;
 }
 
-function specLabel(specs: Record<string, unknown>, key: string): string | null {
-  const value = specs[key];
-  if (value === undefined || value === null || value === "") return null;
-  return String(value);
+function matchPercent(totalScore: number, maxScore: number): number {
+  if (maxScore <= 0) return 0;
+  return Math.round((totalScore / maxScore) * 100);
 }
 
-export function ProductCard({ candidate, rank, expanded, onToggle }: Props) {
-  const { product, sources, reasons, totalScore, scoreBreakdown } = candidate;
+function level(totalScore: number, maxScore: number): string {
+  const ratio = totalScore / maxScore;
+  if (ratio >= 0.8) return "高い";
+  if (ratio >= 0.6) return "ふつう";
+  return "低め";
+}
+
+export function ProductCard({ candidate, rank, maxScore, scoreLabels, expanded, onToggle }: Props) {
+  const { product, sources, reasons, totalScore, scoreBreakdown, specItems } = candidate;
   const top = rank === 1;
 
   return (
@@ -32,24 +40,17 @@ export function ProductCard({ candidate, rank, expanded, onToggle }: Props) {
           </p>
         </div>
         <div className="score">
-          <strong>{Math.round(totalScore)}</strong>
-          <span>点</span>
+          <strong>一致度 {matchPercent(totalScore, maxScore)}%</strong>
+          <span>おすすめ度 {level(totalScore, maxScore)}</span>
         </div>
       </div>
 
       <div className="spec-chips">
-        {specLabel(product.specs, "capacity") && (
-          <span>{specLabel(product.specs, "capacity")}</span>
-        )}
-        {specLabel(product.specs, "heatingMethod") && (
-          <span>{specLabel(product.specs, "heatingMethod")}</span>
-        )}
-        {specLabel(product.specs, "widthMm") && (
-          <span>幅 {specLabel(product.specs, "widthMm")}</span>
-        )}
-        {specLabel(product.specs, "weightKg") && (
-          <span>{specLabel(product.specs, "weightKg")}</span>
-        )}
+        {specItems.map((item) => (
+          <span key={item.key} title={item.label}>
+            {item.value}
+          </span>
+        ))}
         <span className="price">{formatPrice(product.referencePriceYen)}</span>
       </div>
 
@@ -61,13 +62,15 @@ export function ProductCard({ candidate, rank, expanded, onToggle }: Props) {
 
       {expanded && (
         <div className="product-card-detail">
-          <h4>スコア内訳</h4>
+          <h4>
+            スコア内訳（合計 {Math.round(totalScore * 10) / 10} / {maxScore}）
+          </h4>
           <ul className="score-breakdown">
             {Object.entries(scoreBreakdown)
               .sort((a, b) => b[1] - a[1])
               .map(([key, value]) => (
                 <li key={key}>
-                  <span>{key}</span>
+                  <span>{scoreLabels[key] ?? key}</span>
                   <strong>{Math.round(value * 100) / 100}</strong>
                 </li>
               ))}

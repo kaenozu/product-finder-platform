@@ -69,6 +69,13 @@ export interface RecommendationReason {
   text: string;
 }
 
+/** 商品カードに表示するスペック項目（カテゴリ固有の表示フォーマット） */
+export interface SpecDisplayItem {
+  key: string;
+  label: string;
+  value: string;
+}
+
 /** カテゴリ固有モジュールの契約（プロンプト§7の想定インターフェース） */
 export interface CategoryModule<C, P extends CatalogProduct> {
   key: string;
@@ -76,10 +83,16 @@ export interface CategoryModule<C, P extends CatalogProduct> {
   deriveCriteria(answers: AnswerRecord): C;
   canShowPartialResult(answers: AnswerRecord, criteria: C): boolean;
   hardMatch(product: P, criteria: C): HardMatchResult;
-  score(product: P, criteria: C): ScoreResult;
-  explain(product: P, criteria: C): RecommendationReason[];
+  score(product: P, criteria: C, offers?: ProductOffer[]): ScoreResult;
+  explain(product: P, criteria: C, offers?: ProductOffer[]): RecommendationReason[];
   /** 未回答のうち、criteria導出に影響する質問キー */
   unansweredImportantKeys(answers: AnswerRecord): string[];
   /** 回答内容とカタログ全体に基づく追加の警告（例: 指定した機能を満たす商品が存在しない） */
   buildWarnings?(answers: AnswerRecord, criteria: C, products: P[]): string[];
+  /** スコア内訳キー→ユーザー向け表示ラベル */
+  scoreLabels: Record<string, string>;
+  /** スコアの理論上の最大値（一致度の計算に使用） */
+  maxScore: number;
+  /** 商品カードに表示するスペック項目（カテゴリ固有の単位・文言） */
+  formatSpecs(product: P): SpecDisplayItem[];
 }
