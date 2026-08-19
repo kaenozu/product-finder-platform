@@ -1,0 +1,55 @@
+{
+  "name": "kuraberu-diagnosis",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "packageManager": "pnpm@10.34.5",
+  "engines": {
+    "node": "^20.19.1 || >=22.12.0",
+    "pnpm": "10.34.5"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint .",
+    "typecheck": "tsc --build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "e2e": "playwright test",
+    "db:migrate": "wrangler d1 migrations apply kuraberu-diagnosis --local",
+    "db:reset": "wrangler d1 execute kuraberu-diagnosis --local --command \"DELETE FROM product_offers; DELETE FROM products; DELETE FROM catalog_versions; DELETE FROM catalog_state; DELETE FROM ingest_runs;\"",
+    "check:deploy": "wrangler deploy --dry-run",
+    "verify": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm test:integration && pnpm build && git diff --check"
+  },
+  "dependencies": {
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "^1.53.0",
+    "@cloudflare/vitest-pool-workers": "^0.22.0",
+    "@cloudflare/workers-types": "^5.0.0",
+    "@eslint/js": "^9.0.0",
+    "@playwright/test": "^1.62.1",
+    "@types/node": "^26.2.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "eslint": "^9.0.0",
+    "eslint-plugin-react-hooks": "^7.0.0",
+    "eslint-plugin-react-refresh": "^0.4.0",
+    "globals": "^17.11.0",
+    "prettier": "^3.9.0",
+    "typescript": "^5.9.0",
+    "typescript-eslint": "^8.0.0",
+    "vite": "^8.0.0",
+    "vitest": "^4.0.0",
+    "wrangler": "^4.124.0"
+  }
+}

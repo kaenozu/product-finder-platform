@@ -1,0 +1,70 @@
+/**
+ * e2e/ローカル確認用サーバー起動スクリプト。
+ * 1) ローカルD1へmigration適用
+ * 2) wrangler dev を起動（DEV_SEED=1）
+ * 3) /api/health の応答を待つ
+ * 4) /api/dev/seed をPOSTしてカタログを公開
+ * 5) サーバーが終了するまで維持（Ctrl+C / SIGTERM で子プロセスを終了）
+ */
+import { spawn } from "node:child_process";
+import { setTimeout as delay } from "node:timers/promises";
+
+const PORT = process.env.PORT ?? "8787";
+const BASE = `http://127.0.0.1:${PORT}`;
+const PNPM = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+
+function runOnce(cmd, args) {
+  return new Promise((resolve, reject) => {
+    const p = spawn(cmd, args, { stdio: "inherit", shell: true });
+    p.on("exit", (code) => (code === 0 ? resolve() : reject(new Error(`${cmd} exited ${code}`))));
+    p.on("error", reject);
+  });
+}
+
+async function waitForHealth() {
+  for (let i = 0; i < 120; i++) {
+    try {
+      const res = await fetch(`${BASE}/api/health`);
+      if (res.ok) return;
+    } catch {
+      // not ready yet
+    }
+    await delay(500);
+  }
+  throw new Error("wrangler dev did not become healthy in time");
+}
+
+await runOnce(PNPM, ["build"]);
+await runOnce(PNPM, ["wrangler", "d1", "migrations", "apply", "kuraberu-diagnosis", "--local"]);
+
+const dev = spawn(PNPM, ["wrangler", "dev", "--port", PORT, "--var", "DEV_SEED:1"], {
+  stdio: "inherit",
+  shell: true,
+});
+
+dev.on("exit", (code) => process.exit(code ?? 0));
+dev.on("error", (err) => {
+  console.error("[e2e-server] wrangler dev failed:", err);
+  process.exit(1);
+});
+process.on("SIGTERM", () => dev.kill());
+process.on("SIGINT", () => dev.kill());
+
+try {
+  await waitForHealth();
+  const seed = await fetch(`${BASE}/api/dev/seed`, { method: "POST" });
+  if (!seed.ok) {
+    const text = await seed.text();
+    throw new Error(`seed failed: ${seed.status} ${text}`);
+  }
+  const summary = await seed.json();
+  console.log(
+    `[e2e-server] seeded catalog: ${summary.status} products=${summary.normalizedCount} version=${summary.versionId ?? "-"}`
+  );
+} catch (err) {
+  console.error("[e2e-server]", err);
+  dev.kill();
+  process.exit(1);
+}
+
+console.log(`[e2e-server] ready at ${BASE}`);
