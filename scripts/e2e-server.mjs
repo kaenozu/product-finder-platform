@@ -65,8 +65,9 @@ try {
     throw new Error(`seed failed: ${seed.status} ${text}`);
   }
   const summary = await seed.json();
+  const first = summary.results?.[0] ?? summary;
   console.log(
-    `[e2e-server] seeded catalog: ${summary.status} products=${summary.normalizedCount} version=${summary.versionId ?? "-"}`
+    `[e2e-server] seeded catalog: ${first.status} products=${first.normalizedCount} version=${first.versionId ?? "-"}`
   );
 } catch (err) {
   console.error("[e2e-server]", err);
