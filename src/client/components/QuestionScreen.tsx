@@ -69,11 +69,7 @@ export function QuestionScreen({
         </div>
       )}
 
-      <LiveCandidates
-        result={previewResult}
-        loading={previewLoading}
-        onOpen={onOpenPreview}
-      />
+      <LiveCandidates result={previewResult} loading={previewLoading} onOpen={onOpenPreview} />
     </section>
   );
 }
