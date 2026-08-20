@@ -373,6 +373,8 @@ h4 {
 
 .product-card.top {
   border-color: color-mix(in srgb, var(--accent-fill) 45%, transparent);
+  border-width: 2px;
+  padding: 1.25rem 1.2rem 1rem;
 }
 
 .product-card-head {
@@ -431,6 +433,12 @@ h4 {
   font-size: 0.85rem;
 }
 
+.score-note {
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  margin: 0.35rem 0 0;
+}
+
 .spec-chips {
   display: flex;
   flex-wrap: wrap;
@@ -467,6 +475,28 @@ h4 {
   content: "✓ ";
   color: var(--accent-fill);
   font-weight: 700;
+}
+
+.purchase-cta {
+  margin-top: 0.9rem;
+}
+
+.purchase-cta .btn-primary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  text-decoration: none;
+}
+
+.purchase-unavailable {
+  display: block;
+  color: var(--text-secondary);
+  background: var(--surface-muted);
+  border-radius: var(--radius-sm);
+  padding: 0.7rem 1rem;
+  text-align: center;
+  font-size: 0.9rem;
 }
 
 .product-card-detail {
@@ -526,6 +556,33 @@ h4 {
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@media (max-width: 480px) {
+  .product-card-head {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.5rem 0.75rem;
+  }
+
+  .rank-badge {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+
+  .score {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    text-align: left;
+  }
+
+  .score strong {
+    font-size: 1.15rem;
+  }
+
+  .product-card.top .rank-badge {
+    font-size: 0.82rem;
   }
 }
 
