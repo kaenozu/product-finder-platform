@@ -94,4 +94,34 @@ describe("worker routing and request boundaries", () => {
     expect(body.categories.some((c) => c.categoryKey === "rice-cooker")).toBe(true);
     expect(body.categories[0]!.copy.appTitle).toBeTruthy();
   });
+
+  it("既知カテゴリのconfigを返す", async () => {
+    const response = await worker.fetch(
+      new Request("http://localhost/api/config?category=rice-cooker"),
+      workerEnv
+    );
+
+    expect(response.status).toBe(200);
+    expect((await response.json()) as unknown).toMatchObject({ categoryKey: "rice-cooker" });
+  });
+
+  it("未知カテゴリのconfigをdefaultカテゴリへfallbackせず404にする", async () => {
+    const response = await worker.fetch(
+      new Request("http://localhost/api/config?category=unknown-category"),
+      workerEnv
+    );
+
+    expect(response.status).toBe(404);
+    expect((await response.json()) as unknown).toEqual({
+      error: "unsupported_category",
+      categoryKey: "unknown-category",
+    });
+  });
+
+  it("category未指定のconfigは後方互換でdefaultカテゴリを返す", async () => {
+    const response = await worker.fetch(new Request("http://localhost/api/config"), workerEnv);
+
+    expect(response.status).toBe(200);
+    expect((await response.json()) as unknown).toMatchObject({ categoryKey: "rice-cooker" });
+  });
 });
