@@ -5,7 +5,7 @@
   "version": "0.1.0",
   "packageManager": "pnpm@10.34.5",
   "engines": {
-    "node": "^20.19.1 || >=22.12.0",
+    "node": "^22.13.0 || >=24.0.0",
     "pnpm": "10.34.5"
   },
   "scripts": {
@@ -23,7 +23,8 @@
     "db:migrate": "wrangler d1 migrations apply product-finder-platform --local",
     "db:reset": "wrangler d1 execute product-finder-platform --local --command \"DELETE FROM product_offers; DELETE FROM products; DELETE FROM catalog_versions; DELETE FROM catalog_state; DELETE FROM ingest_runs;\"",
     "check:deploy": "wrangler deploy --dry-run",
-    "verify": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm test:integration && pnpm build && git diff --check"
+    "verify": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm test:integration && pnpm build && git diff --check",
+    "verify:ci": "pnpm verify && pnpm audit --audit-level high && pnpm check:deploy && pnpm e2e"
   },
   "dependencies": {
     "react": "^19.2.0",
@@ -33,17 +34,17 @@
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.53.0",
     "@cloudflare/vitest-pool-workers": "^0.22.0",
-    "@cloudflare/workers-types": "^5.0.0",
-    "@eslint/js": "^9.0.0",
+    "@cloudflare/workers-types": "^5.20260820.1",
+    "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.62.1",
-    "@types/node": "^26.2.0",
+    "@types/node": "^24.13.3",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@typescript-eslint/parser": "^8.0.0",
-    "@vitejs/plugin-react": "^5.0.0",
-    "eslint": "^9.0.0",
+    "@vitejs/plugin-react": "^6.1.0",
+    "eslint": "^10.8.1",
     "eslint-plugin-react-hooks": "^7.0.0",
-    "eslint-plugin-react-refresh": "^0.4.0",
+    "eslint-plugin-react-refresh": "^0.5.4",
     "globals": "^17.11.0",
     "prettier": "^3.9.0",
     "typescript": "^5.9.0",

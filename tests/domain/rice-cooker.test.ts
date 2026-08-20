@@ -10,11 +10,27 @@ import {
   explain,
   unansweredImportantKeys,
 } from "../../src/shared/domain/rice-cooker/module";
-import type { RiceCookerProduct } from "../../src/shared/domain/rice-cooker/types";
+import type { RiceCookerProduct, RiceCookerSpecs } from "../../src/shared/domain/rice-cooker/types";
 import { ManualRiceCookerAdapter } from "../../src/worker/adapters/manual";
-import type { AnswerRecord } from "../../src/shared/domain/types";
+import type {
+  AnswerRecord,
+  CatalogProduct,
+  ProductOffer,
+  QuestionDefinition,
+} from "../../src/shared/domain/types";
 
 const adapter = new ManualRiceCookerAdapter();
+
+function isRiceCookerProduct(product: CatalogProduct): product is RiceCookerProduct {
+  return product.categoryKey === "rice-cooker";
+}
+
+function asRiceCookerProducts(products: CatalogProduct[]): RiceCookerProduct[] {
+  if (!products.every(isRiceCookerProduct)) {
+    throw new Error("manual rice-cooker adapter returned a product from another category");
+  }
+  return products;
+}
 
 function makeProduct(
   overrides: Partial<RiceCookerProduct> & Pick<RiceCookerProduct, "productId" | "specs">
@@ -244,7 +260,7 @@ describe("score（null安全）", () => {
     });
     const sOld = score(old, deriveCriteria({ cookVolume: "3" }));
     const sFresh = score(fresh, deriveCriteria({ cookVolume: "3" }));
-    expect(sFresh.breakdown.freshnessScore).toBeGreaterThan(sOld.breakdown.freshnessScore);
+    expect(sFresh.breakdown.freshnessScore!).toBeGreaterThan(sOld.breakdown.freshnessScore!);
   });
 });
 
@@ -368,7 +384,7 @@ describe("30商品PoC（fetch → normalize → criteria → hardMatch → score
   const ctx = { categoryKey: "rice-cooker", now: new Date("2026-08-19T00:00:00Z") };
 
   it("37商品以上が正規化でき、重複がない", async () => {
-    const fetched = await adapter.fetch(ctx);
+    const fetched = await adapter.fetch();
     expect(fetched.meta.fetchedCount).toBeGreaterThanOrEqual(30);
     const normalized = await adapter.normalize(fetched, ctx);
     expect(normalized.rejectedCount).toBe(0);
@@ -380,8 +396,9 @@ describe("30商品PoC（fetch → normalize → criteria → hardMatch → score
   });
 
   it("完全回答でfinal・上位5件・全候補がhardMatchを通る・スコア降順", async () => {
-    const fetched = await adapter.fetch(ctx);
-    const { products } = await adapter.normalize(fetched, ctx);
+    const fetched = await adapter.fetch();
+    const normalized = await adapter.normalize(fetched, ctx);
+    const products = asRiceCookerProducts(normalized.products);
 
     const result = recommend(riceCookerModule, FULL_ANSWERS, products, new Map());
     expect(result.status).toBe("final");
@@ -391,8 +408,8 @@ describe("30商品PoC（fetch → normalize → criteria → hardMatch → score
 
     // スコア降順
     for (let i = 1; i < result.candidates.length; i++) {
-      expect(result.candidates[i - 1].totalScore).toBeGreaterThanOrEqual(
-        result.candidates[i].totalScore
+      expect(result.candidates[i - 1]!.totalScore).toBeGreaterThanOrEqual(
+        result.candidates[i]!.totalScore
       );
     }
 
@@ -409,8 +426,9 @@ describe("30商品PoC（fetch → normalize → criteria → hardMatch → score
   });
 
   it("同時調理を希望しない場合は警告なしでfinal", async () => {
-    const fetched = await adapter.fetch(ctx);
-    const { products } = await adapter.normalize(fetched, ctx);
+    const fetched = await adapter.fetch();
+    const normalized = await adapter.normalize(fetched, ctx);
+    const products = asRiceCookerProducts(normalized.products);
 
     const result = recommend(
       riceCookerModule,
@@ -424,8 +442,9 @@ describe("30商品PoC（fetch → normalize → criteria → hardMatch → score
   });
 
   it("部分回答（2問のみ）でpartial+警告が付く", async () => {
-    const fetched = await adapter.fetch(ctx);
-    const { products } = await adapter.normalize(fetched, ctx);
+    const fetched = await adapter.fetch();
+    const normalized = await adapter.normalize(fetched, ctx);
+    const products = asRiceCookerProducts(normalized.products);
 
     const result = recommend(
       riceCookerModule,
@@ -439,8 +458,9 @@ describe("30商品PoC（fetch → normalize → criteria → hardMatch → score
   });
 
   it("条件が厳しすぎるとnoMatchになり理由が返る（条件は緩和しない）", async () => {
-    const fetched = await adapter.fetch(ctx);
-    const { products } = await adapter.normalize(fetched, ctx);
+    const fetched = await adapter.fetch();
+    const normalized = await adapter.normalize(fetched, ctx);
+    const products = asRiceCookerProducts(normalized.products);
 
     // 10合+幅24cm以下+1万円未満 はほぼ成立しない
     const result = recommend(
@@ -461,8 +481,9 @@ describe("30商品PoC（fetch → normalize → criteria → hardMatch → score
   });
 
   it("全商品がhardMatch判定でクラッシュしない（null安全の全体確認）", async () => {
-    const fetched = await adapter.fetch(ctx);
-    const { products } = await adapter.normalize(fetched, ctx);
+    const fetched = await adapter.fetch();
+    const normalized = await adapter.normalize(fetched, ctx);
+    const products = asRiceCookerProducts(normalized.products);
     const criteria = riceCookerModule.deriveCriteria(FULL_ANSWERS);
     for (const product of products) {
       const hm = riceCookerModule.hardMatch(product, criteria);
@@ -553,28 +574,41 @@ describe("validateQuestionGraph（P2-10: 質問グラフ検証）", () => {
   });
 
   it("存在しない next キーを検出する", () => {
-    const questions = [
-      { key: "a", order: 1, question: "Q", options: [{ value: "x", label: "X", next: "nope" }] },
+    const questions: QuestionDefinition[] = [
+      {
+        key: "a",
+        order: 1,
+        title: "Q",
+        required: true,
+        options: [{ value: "x", label: "X", next: "nope" }],
+      },
     ];
     const issues = validateQuestionGraph(questions);
     expect(issues.some((i) => i.message.includes("next=nope"))).toBe(true);
   });
 
   it("到達できない質問（孤児）を検出する", () => {
-    const questions = [
-      { key: "a", order: 1, question: "Q", options: [{ value: "x", label: "X" }] },
-      { key: "orphan", order: 2, question: "Q2", options: [{ value: "y", label: "Y" }] },
+    const questions: QuestionDefinition[] = [
+      { key: "a", order: 1, title: "Q", required: true, options: [{ value: "x", label: "X" }] },
+      {
+        key: "orphan",
+        order: 2,
+        title: "Q2",
+        required: true,
+        options: [{ value: "y", label: "Y" }],
+      },
     ];
     const issues = validateQuestionGraph(questions);
     expect(issues.some((i) => i.message.includes("orphan"))).toBe(true);
   });
 
   it("分岐の循環を検出する", () => {
-    const questions = [
+    const questions: QuestionDefinition[] = [
       {
         key: "a",
         order: 1,
-        question: "Q",
+        title: "Q",
+        required: true,
         options: [
           { value: "x", label: "X", next: "b" },
           { value: "y", label: "Y" },
@@ -583,7 +617,8 @@ describe("validateQuestionGraph（P2-10: 質問グラフ検証）", () => {
       {
         key: "b",
         order: 2,
-        question: "Q2",
+        title: "Q2",
+        required: true,
         options: [{ value: "z", label: "Z", next: "a" }],
       },
     ];
@@ -594,7 +629,7 @@ describe("validateQuestionGraph（P2-10: 質問グラフ検証）", () => {
 
 describe("recommend ガードと結果メタデータ", () => {
   it("1問だけの回答では候補を出さず警告（canShowPartialResultの保証）", async () => {
-    const fetched = await adapter.fetch(new ctxCtor());
+    const fetched = await adapter.fetch();
     const { products } = await adapter.normalize(fetched, ctxCtor());
     const result = recommend(riceCookerModule, { cookVolume: "5.5" }, products, new Map());
     expect(result.status).toBe("partial");
@@ -603,7 +638,7 @@ describe("recommend ガードと結果メタデータ", () => {
   });
 
   it("resultにmaxScoreとscoreLabelsが載る", async () => {
-    const fetched = await adapter.fetch(new ctxCtor());
+    const fetched = await adapter.fetch();
     const { products } = await adapter.normalize(fetched, ctxCtor());
     const result = recommend(riceCookerModule, FULL_ANSWERS, products, new Map());
     expect(result.maxScore).toBe(riceCookerModule.maxScore);
@@ -613,7 +648,7 @@ describe("recommend ガードと結果メタデータ", () => {
   });
 
   it("matchedCountは全マッチ数・candidatesは上位MAX_CANDIDATES件のみ", async () => {
-    const fetched = await adapter.fetch(new ctxCtor());
+    const fetched = await adapter.fetch();
     const { products } = await adapter.normalize(fetched, ctxCtor());
     const result = recommend(riceCookerModule, FULL_ANSWERS, products, new Map());
     expect(result.matchedCount).toBeGreaterThanOrEqual(result.candidates.length);
@@ -621,7 +656,7 @@ describe("recommend ガードと結果メタデータ", () => {
   });
 
   it("一致度%が回答条件ごとに到達可能な最大値で正規化される（attainableMaxScore）", async () => {
-    const fetched = await adapter.fetch(new ctxCtor());
+    const fetched = await adapter.fetch();
     const { products } = await adapter.normalize(fetched, ctxCtor());
 
     // 「加熱方式こだわらない」「予算こだわらない」なら到達可能上限が下がる
@@ -667,7 +702,7 @@ describe("budgetScore（実売offer価格ベース）", () => {
       releaseYear: null,
     },
   });
-  const offer = (priceMinor: number) => ({
+  const offer = (priceMinor: number | null): ProductOffer => ({
     productId: "price1",
     providerKey: "test",
     providerItemId: "x",
@@ -723,14 +758,14 @@ describe("budgetScore（実売offer価格ベース）", () => {
 function budgetScoreViaScore(
   product: RiceCookerProduct,
   criteria: ReturnType<typeof deriveCriteria>,
-  offers: Array<{ priceMinor: number | null }>
+  offers: ProductOffer[]
 ) {
-  const s = score(product, criteria, offers as never);
+  const s = score(product, criteria, offers);
   return s.breakdown.budgetScore;
 }
 
 describe("featureScore（重視ポイントの再設計）", () => {
-  const baseSpecs = {
+  const baseSpecs: Omit<RiceCookerSpecs, "heatingMethod"> = {
     capacityGou: 5.5,
     powerW: null,
     weightKg: null,
@@ -739,7 +774,7 @@ describe("featureScore（重視ポイントの再設計）", () => {
     heightMm: null,
     keepWarmHours: null,
     innerPot: null,
-    features: [] as string[],
+    features: [],
     releaseYear: null,
   };
 
@@ -771,7 +806,7 @@ describe("featureScore（重視ポイントの再設計）", () => {
     const criteria = deriveCriteria({ cookVolume: "5.5", priority: "taste" });
     const sP = score(pressure, criteria);
     const sM = score(micom, criteria);
-    expect(sP.breakdown.featureScore).toBeGreaterThan(sM.breakdown.featureScore);
+    expect(sP.breakdown.featureScore!).toBeGreaterThan(sM.breakdown.featureScore!);
     expect(sP.breakdown.featureScore).toBeLessThanOrEqual(3);
   });
 });

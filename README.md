@@ -37,9 +37,11 @@ category module（質問・判定ロジック）
 ## コマンド
 
 ```bash
+node --version       # Node.js 24推奨（.node-version）
 pnpm install
 pnpm dev            # Vite（UI開発）
 pnpm verify         # format/lint/typecheck/test/integration/build/git diff --check
+pnpm verify:ci      # verify + audit + deploy dry-run + Playwright E2E
 pnpm e2e            # Playwright e2e（ローカルサーバー自動起動）
 node scripts/e2e-server.mjs   # ローカル確認用サーバー（build+migration+seed）
 pnpm db:migrate     # D1ローカルmigration適用
@@ -54,7 +56,7 @@ pnpm check:deploy   # wrangler deploy --dry-run
 
 ## 品質管理
 
-- `pnpm verify`（format/lint/typecheck/unit/integration/build）+ `pnpm e2e`（Playwright）を全修正で実行
+- `pnpm verify:ci`（format/lint/typecheck/unit/integration/build/audit/deploy dry-run/E2E）を全修正で実行
 - GitHub Actions（`.github/workflows/ci.yml`）で push/PR 時に同一ゲートを自動実行
 
 ## 未実施（TODO）

@@ -5,7 +5,7 @@ import path from "node:path";
 export default defineConfig({
   plugins: [
     cloudflareTest(async () => {
-      const migrationsPath = path.join(__dirname, "migrations");
+      const migrationsPath = path.join(import.meta.dirname, "migrations");
       const migrations = await readD1Migrations(migrationsPath);
 
       return {

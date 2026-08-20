@@ -13,6 +13,11 @@ const PORT = process.env.PORT ?? "8787";
 const BASE = `http://127.0.0.1:${PORT}`;
 const PNPM = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 
+/**
+ * @param {string} cmd
+ * @param {string[]} args
+ * @returns {Promise<void>}
+ */
 function runOnce(cmd, args) {
   return new Promise((resolve, reject) => {
     const p = spawn(cmd, args, { stdio: "inherit", shell: true });
@@ -64,7 +69,11 @@ try {
     const text = await seed.text();
     throw new Error(`seed failed: ${seed.status} ${text}`);
   }
-  const summary = await seed.json();
+  /**
+   * @typedef {{ status?: string, normalizedCount?: number, versionId?: string | null }} SeedResult
+   * @typedef {SeedResult & { results?: SeedResult[] }} SeedSummary
+   */
+  const summary = /** @type {SeedSummary} */ (await seed.json());
   const first = summary.results?.[0] ?? summary;
   console.log(
     `[e2e-server] seeded catalog: ${first.status} products=${first.normalizedCount} version=${first.versionId ?? "-"}`
