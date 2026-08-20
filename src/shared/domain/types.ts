@@ -105,6 +105,11 @@ export interface CategoryModule<C, P extends CatalogProduct> {
   questions: QuestionDefinition[];
   deriveCriteria(answers: AnswerRecord): C;
   canShowPartialResult(answers: AnswerRecord, criteria: C): boolean;
+  /** クライアントへ公開する暫定候補開始条件。判定ロジック自体はWorker側に保持する。 */
+  partialEligibility: {
+    type: "answered_at_least";
+    minAnswers: number;
+  };
   hardMatch(product: P, criteria: C): HardMatchResult;
   score(product: P, criteria: C, offers?: ProductOffer[]): ScoreResult;
   /** おすすめ理由（positive。スコア・条件に基づく） */

@@ -11,6 +11,7 @@ export interface ConfigResponse {
   maxCandidates: number;
   scoreLabels: Record<string, string>;
   maxScore: number;
+  partialEligibility: { type: "answered_at_least"; minAnswers: number };
   copy: CategoryCopy;
 }
 

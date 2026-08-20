@@ -25,6 +25,7 @@ export const riceCookerModule: CategoryModule<RiceCookerCriteria, RiceCookerProd
   questions: QUESTIONS,
   deriveCriteria,
   canShowPartialResult,
+  partialEligibility: { type: "answered_at_least", minAnswers: 2 },
   hardMatch,
   score,
   explain,
