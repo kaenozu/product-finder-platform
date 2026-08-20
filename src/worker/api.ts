@@ -3,7 +3,12 @@ import { recommend, MAX_CANDIDATES } from "../shared/domain/engine";
 import { activeQuestionKeys } from "../shared/domain/flow";
 import { getModule, listModules } from "../shared/domain/registry";
 import type { CatalogProduct, ProductOffer, AnswerRecord } from "../shared/domain/types";
-import { getActiveProductById, listActiveProducts, listOffersForProducts } from "./repo/catalog";
+import {
+  getActiveProductById,
+  getCatalogReadiness,
+  listActiveProducts,
+  listOffersForProducts,
+} from "./repo/catalog";
 import { json } from "./http";
 import type { Env } from "./env";
 
@@ -86,6 +91,19 @@ export async function handleCategories(): Promise<Response> {
   return json({ categories });
 }
 
+export async function handleReady(env: Env): Promise<Response> {
+  const categories = await Promise.all(
+    listModules().map((categoryKey) => getCatalogReadiness(env.DB, categoryKey))
+  );
+  const ready = categories.every(
+    (category) => category.activeVersionStatus === "published" && category.productCount > 0
+  );
+  return json(
+    { ok: ready, service: "product-finder-platform", categories },
+    { status: ready ? 200 : 503 }
+  );
+}
+
 export async function handleConfig(request: Request): Promise<Response> {
   const url = new URL(request.url);
   const requested = url.searchParams.get("category") ?? undefined;
@@ -135,6 +153,18 @@ export async function handleEvaluate(env: Env, body: unknown): Promise<Response>
     return json(
       { error: "insufficient_answers", message: "もう少し質問に答えてください" },
       { status: 400 }
+    );
+  }
+
+  const catalog = await getCatalogReadiness(env.DB, categoryKey);
+  if (catalog.activeVersionStatus !== "published" || catalog.productCount === 0) {
+    return json(
+      {
+        error: "catalog_unavailable",
+        categoryKey,
+        message: "公開カタログが利用できないため診断を実行できません",
+      },
+      { status: 503 }
     );
   }
 
