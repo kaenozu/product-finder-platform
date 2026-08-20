@@ -1,7 +1,7 @@
 .live-candidates {
   margin-top: 2rem;
   padding-top: 1.5rem;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--border-subtle);
 }
 
 .live-candidates-head {
@@ -35,10 +35,11 @@
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 0.75rem;
-  padding: 0.8rem 0.9rem;
+  padding: 0.85rem 1rem;
   background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow);
 }
 
 .live-rank {
@@ -47,10 +48,10 @@
   width: 1.8rem;
   height: 1.8rem;
   border-radius: 999px;
-  color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent-fill);
+  background: color-mix(in srgb, var(--accent-fill) 10%, transparent);
   font-size: 0.8rem;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .live-product {
@@ -76,7 +77,7 @@
 
 .live-match {
   white-space: nowrap;
-  color: var(--accent);
+  color: var(--accent-fill);
   font-size: 0.82rem;
   font-variant-numeric: tabular-nums;
 }

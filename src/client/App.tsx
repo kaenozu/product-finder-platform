@@ -30,6 +30,9 @@ export default function App() {
   useEffect(() => {
     fetchConfig()
       .then((c) => {
+        document.title = `${c.copy.appTitle} — ${c.copy.heroTitle}`;
+        const meta = document.querySelector('meta[name="description"]');
+        if (meta) meta.setAttribute("content", c.copy.heroLead);
         setConfig(c);
         setScreen("start");
       })
@@ -173,7 +176,10 @@ export default function App() {
   return (
     <main>
       <header className="app-header">
-        <span className="logo">{config?.copy.appTitle}</span>
+        <span className="logo">
+          <img className="logo-mark" src="/favicon.svg" alt="" width="20" height="20" />
+          {config?.copy.appTitle}
+        </span>
         {screen === "questions" && result && (
           <button className="link" type="button" onClick={handleOpenPreview}>
             {result.noMatch ? "条件を確認" : result.status === "final" ? "結果へ" : "候補を詳しく"}
