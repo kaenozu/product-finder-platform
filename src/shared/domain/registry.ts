@@ -1,6 +1,7 @@
 import type { CatalogProduct, CategoryModule } from "./types";
 import type { RiceCookerCriteria, RiceCookerProduct } from "./rice-cooker/types";
 import { QUESTIONS } from "./rice-cooker/questions";
+import { validateQuestionGraph } from "./flow";
 import {
   SCORE_LABELS,
   MAX_SCORE,
@@ -40,6 +41,17 @@ export const riceCookerModule: CategoryModule<RiceCookerCriteria, RiceCookerProd
 const MODULES = new Map<string, CategoryModule<unknown, never>>([
   [riceCookerModule.key, riceCookerModule],
 ]);
+
+/** 登録済みモジュールの質問グラフを検証する（起動時のセーフティネット） */
+export function validateRegisteredModules(): string[] {
+  const issues: string[] = [];
+  for (const [key, module] of MODULES) {
+    for (const issue of validateQuestionGraph(module.questions)) {
+      issues.push(`[${key}] ${issue.message}`);
+    }
+  }
+  return issues;
+}
 
 export function getModule<C, P extends CatalogProduct>(key: string): CategoryModule<C, P> {
   const module = MODULES.get(key);

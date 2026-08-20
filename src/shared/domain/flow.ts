@@ -94,3 +94,78 @@ export function computeFlow(
     totalSteps: estimateTotalSteps(questions),
   };
 }
+
+export interface GraphValidationIssue {
+  message: string;
+}
+
+/**
+ * 質問グラフの整合性検証。
+ * - 各 option.next が既存の質問キーを指している
+ * - 各質問が順序の先頭から到達可能（孤児質問がない）
+ * - 分岐に循環がない（無限ループ防止）
+ */
+export function validateQuestionGraph(questions: QuestionDefinition[]): GraphValidationIssue[] {
+  const issues: GraphValidationIssue[] = [];
+  const keys = new Set(questions.map((q) => q.key));
+  const byKey = new Map(questions.map((q) => [q.key, q]));
+
+  // 重複キー
+  if (keys.size !== questions.length) {
+    issues.push({ message: "質問キーが重複している" });
+  }
+
+  // next キーの存在チェック
+  for (const q of questions) {
+    for (const opt of q.options) {
+      if (opt.next !== undefined && opt.next !== null && !keys.has(opt.next)) {
+        issues.push({ message: `${q.key}.${opt.value} の next=${opt.next} が存在しない` });
+      }
+    }
+  }
+
+  const byOrder = [...questions].sort((a, b) => a.order - b.order);
+  const first = byOrder[0];
+  if (!first) return issues;
+
+  // 到達可能性（先頭から各 option.next を辿る）
+  const reachable = new Set<string>();
+  const visited = new Set<string>();
+  const stack: string[] = [first.key];
+  while (stack.length > 0) {
+    const key = stack.pop()!;
+    if (visited.has(key)) continue;
+    visited.add(key);
+    reachable.add(key);
+    const q = byKey.get(key);
+    for (const opt of q?.options ?? []) {
+      if (opt.next) stack.push(opt.next);
+    }
+  }
+  for (const q of questions) {
+    if (!reachable.has(q.key)) {
+      issues.push({ message: `${q.key} が先頭から到達できない` });
+    }
+  }
+
+  // 循環検出（visited に再訪した場合は循環）
+  const cycleVisited = new Set<string>();
+  const onPath = new Set<string>();
+  const detectCycle = (key: string): boolean => {
+    if (onPath.has(key)) return true;
+    if (cycleVisited.has(key)) return false;
+    onPath.add(key);
+    const q = byKey.get(key);
+    for (const opt of q?.options ?? []) {
+      if (opt.next && detectCycle(opt.next)) return true;
+    }
+    onPath.delete(key);
+    cycleVisited.add(key);
+    return false;
+  };
+  if (detectCycle(first.key)) {
+    issues.push({ message: "質問の分岐に循環がある" });
+  }
+
+  return issues;
+}

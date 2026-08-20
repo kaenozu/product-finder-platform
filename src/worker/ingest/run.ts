@@ -6,8 +6,10 @@ import {
   ensureCatalogState,
   finishIngestRun,
   getActiveVersionId,
+  getLastContentHash,
   insertOffers,
   insertProducts,
+  pruneOldVersions,
   setVersionStatus,
   publishVersion,
 } from "../repo/catalog";
@@ -15,6 +17,7 @@ import type { CatalogProduct, CategoryModule } from "../../shared/domain/types";
 import { getModule } from "../../shared/domain/registry";
 import {
   countGate,
+  freshnessGate,
   hardConditionRegressionGate,
   schemaGate,
   uniquenessGate,
@@ -24,13 +27,60 @@ import {
 
 export interface IngestSummary {
   runId: string;
-  status: "succeeded" | "rejected" | "failed";
+  status: "succeeded" | "rejected" | "failed" | "skipped";
   versionId: string | null;
   gates: QualityGateResult[];
   fetchedCount: number;
   normalizedCount: number;
   rejectedCount: number;
   errorSummary?: string;
+}
+
+/**
+ * 商品+オファーの内容ハッシュ（順序・タイムスタンプに依存しない安定ハッシュで no-op 判定する）。
+ * 内容が実質的に変わらない限り再取り込みをスキップできるように、
+ * ingestedAt / sourceUpdatedAt / updatedAt はハッシュ対象から除外する。
+ */
+export function contentHash(products: CatalogProduct[], offers: unknown[]): string {
+  const canonicalProducts = [...products]
+    .sort((a, b) => a.productId.localeCompare(b.productId))
+    .map((p) => ({
+      productId: p.productId,
+      categoryKey: p.categoryKey,
+      manufacturer: p.manufacturer,
+      model: p.model,
+      displayName: p.displayName,
+      specs: p.specs,
+      referencePriceYen: p.referencePriceYen,
+      availability: p.availability,
+      sourceKey: p.sourceKey,
+    }));
+  const canonicalOffers = [...offers]
+    .sort(
+      (a, b) =>
+        (a as { productId: string }).productId.localeCompare(
+          (b as { productId: string }).productId
+        ) ||
+        (a as { providerKey: string }).providerKey.localeCompare(
+          (b as { providerKey: string }).providerKey
+        )
+    )
+    .map((o) => ({
+      productId: (o as { productId: string }).productId,
+      providerKey: (o as { providerKey: string }).providerKey,
+      providerItemId: (o as { providerItemId?: string | null }).providerItemId ?? null,
+      outboundUrl: (o as { outboundUrl: string }).outboundUrl,
+      priceMinor: (o as { priceMinor: number | null }).priceMinor,
+      currency: (o as { currency: string | null }).currency,
+      availability: (o as { availability: string | null }).availability,
+    }));
+  const payload = JSON.stringify({ products: canonicalProducts, offers: canonicalOffers });
+  let h = 0x811c9dc5;
+  for (let i = 0; i < payload.length; i++) {
+    h ^= payload.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(16);
 }
 
 /** module の代表回答から hard-match 回帰ゲートを組み立てる（回答なしmoduleはスキップ） */
@@ -84,6 +134,28 @@ export async function runIngest(
 
     const products = normalized.products as CatalogProduct[];
     const module = getModule(categoryKey);
+    const hash = contentHash(products, normalized.offers);
+
+    // no-op 検出: 直前の成功runと同じ内容なら再公開せずスキップ
+    const lastHash = await getLastContentHash(db, categoryKey, adapter.sourceKey);
+    if (lastHash !== null && lastHash === hash) {
+      await finishIngestRun(db, runId, "succeeded", now, {
+        fetchedCount: fetched.meta.fetchedCount,
+        normalizedCount: normalized.products.length,
+        rejectedCount: normalized.rejectedCount,
+        contentHash: hash,
+      });
+      return {
+        runId,
+        status: "skipped",
+        versionId: null,
+        gates: [],
+        fetchedCount: fetched.meta.fetchedCount,
+        normalizedCount: normalized.products.length,
+        rejectedCount: normalized.rejectedCount,
+        errorSummary: "content unchanged (skipped)",
+      };
+    }
 
     // 前回公開版の商品数（version回帰ゲート用）
     const previousActiveVersion = await getActiveVersionId(db, categoryKey);
@@ -104,6 +176,7 @@ export async function runIngest(
       ...moduleQualityGates(module, products),
       ...buildHardMatchRegressionGates(module, products),
       versionRegressionGate(products.length, previousCount),
+      freshnessGate(products, now),
     ];
 
     const failed = gates.filter((g) => !g.pass);
@@ -144,7 +217,11 @@ export async function runIngest(
       normalizedCount: normalized.products.length,
       rejectedCount: normalized.rejectedCount,
       candidateVersion: versionId,
+      contentHash: hash,
     });
+
+    // 非公開の古いstaging/rejectedバージョンを整理（最新2件まで残す）
+    await pruneOldVersions(db, categoryKey, 2);
 
     return {
       runId,

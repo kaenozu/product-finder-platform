@@ -62,6 +62,8 @@ export default function App() {
     } else {
       setAnswers(flow.clean);
       setCurrentKey(flow.currentKey);
+      // 回答を変更したら古い結果を無効化（結果へ ボタンで古い候補を見せない）
+      setResult(null);
     }
   }
 
@@ -75,6 +77,8 @@ export default function App() {
     const nextFlow = computeFlow(config.questions, next);
     setAnswers(nextFlow.clean);
     setCurrentKey(nextFlow.currentKey);
+    // 回答を変更したら古い結果を無効化
+    setResult(null);
   }
 
   function handlePreview() {

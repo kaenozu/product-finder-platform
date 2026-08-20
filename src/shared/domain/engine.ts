@@ -26,6 +26,8 @@ export interface RecommendationResult<C, P extends CatalogProduct> {
   };
   criteria: C;
   candidates: Candidate<P>[];
+  /** hard-match を通った全件数（candidates は上位 MAX_CANDIDATES 件のみ） */
+  matchedCount: number;
   noMatch: boolean;
   noMatchReasons: string[];
   warnings: string[];
@@ -58,6 +60,7 @@ export function recommend<C, P extends CatalogProduct>(
       progress: { answered: answeredCount, estimatedTotal: activeKeys.length },
       criteria,
       candidates: [],
+      matchedCount: 0,
       noMatch: false,
       noMatchReasons: [],
       warnings: ["もう少し質問に答えると候補を表示できます。"],
@@ -119,6 +122,7 @@ export function recommend<C, P extends CatalogProduct>(
     },
     criteria,
     candidates,
+    matchedCount: hardPassed.length,
     noMatch: hardPassed.length === 0,
     noMatchReasons: [...noMatchReasons],
     warnings,

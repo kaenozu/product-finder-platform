@@ -7,6 +7,8 @@ export const MIN_PRODUCTS = 30;
 export const MAX_PRODUCTS = 1_000;
 /** 前回公開版と比べてこの割合以上減っていたらデータ欠損とみなす */
 export const MAX_REGRESSION_RATIO = 0.1;
+/** ソース更新日時がこの日数を超えて古い場合は fresh でないとみなす */
+export const MAX_SOURCE_AGE_DAYS = 90;
 
 /** gate 1: schema — zodで全レコード検証済み（rejected=0）であること */
 export function schemaGate(rejectedCount: number): QualityGateResult {
@@ -68,6 +70,26 @@ export function hardConditionRegressionGate(
     name: "hard-condition-regression",
     pass: fails.length === 0,
     message: fails.length === 0 ? "代表的条件すべてで候補あり" : `候補なし: ${fails.join(", ")}`,
+  };
+}
+
+/** gate 8: freshness — ソース更新日時が古すぎない（古いデータを再公開しない） */
+export function freshnessGate(products: CatalogProduct[], now: Date): QualityGateResult {
+  const latest = products.reduce<string | null>((max, p) => {
+    if (max === null || p.sourceUpdatedAt > max) return p.sourceUpdatedAt;
+    return max;
+  }, null);
+  if (latest === null) {
+    return { name: "freshness", pass: false, message: "更新日時不明の商品しかない" };
+  }
+  const ageDays = (now.getTime() - new Date(latest).getTime()) / 86_400_000;
+  const pass = ageDays <= MAX_SOURCE_AGE_DAYS;
+  return {
+    name: "freshness",
+    pass,
+    message: pass
+      ? `最新更新 ${latest.slice(0, 10)}（${Math.floor(ageDays)}日前）`
+      : `データが古い（最新更新 ${latest.slice(0, 10)}、${Math.floor(ageDays)}日前）`,
   };
 }
 

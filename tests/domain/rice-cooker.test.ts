@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { recommend, MAX_CANDIDATES } from "../../src/shared/domain/engine";
-import { estimateTotalSteps } from "../../src/shared/domain/flow";
-import { riceCookerModule } from "../../src/shared/domain/registry";
+import { estimateTotalSteps, validateQuestionGraph } from "../../src/shared/domain/flow";
+import { riceCookerModule, validateRegisteredModules } from "../../src/shared/domain/registry";
 import {
   deriveCriteria,
   formatSpecs,
@@ -546,6 +546,52 @@ describe("estimateTotalSteps（進捗分母が毎回増えないこと）", () =
   });
 });
 
+describe("validateQuestionGraph（P2-10: 質問グラフ検証）", () => {
+  it("実モジュールのグラフは検証を通過する", () => {
+    expect(validateQuestionGraph(riceCookerModule.questions)).toEqual([]);
+    expect(validateRegisteredModules()).toEqual([]);
+  });
+
+  it("存在しない next キーを検出する", () => {
+    const questions = [
+      { key: "a", order: 1, question: "Q", options: [{ value: "x", label: "X", next: "nope" }] },
+    ];
+    const issues = validateQuestionGraph(questions);
+    expect(issues.some((i) => i.message.includes("next=nope"))).toBe(true);
+  });
+
+  it("到達できない質問（孤児）を検出する", () => {
+    const questions = [
+      { key: "a", order: 1, question: "Q", options: [{ value: "x", label: "X" }] },
+      { key: "orphan", order: 2, question: "Q2", options: [{ value: "y", label: "Y" }] },
+    ];
+    const issues = validateQuestionGraph(questions);
+    expect(issues.some((i) => i.message.includes("orphan"))).toBe(true);
+  });
+
+  it("分岐の循環を検出する", () => {
+    const questions = [
+      {
+        key: "a",
+        order: 1,
+        question: "Q",
+        options: [
+          { value: "x", label: "X", next: "b" },
+          { value: "y", label: "Y" },
+        ],
+      },
+      {
+        key: "b",
+        order: 2,
+        question: "Q2",
+        options: [{ value: "z", label: "Z", next: "a" }],
+      },
+    ];
+    const issues = validateQuestionGraph(questions);
+    expect(issues.some((i) => i.message.includes("循環"))).toBe(true);
+  });
+});
+
 describe("recommend ガードと結果メタデータ", () => {
   it("1問だけの回答では候補を出さず警告（canShowPartialResultの保証）", async () => {
     const fetched = await adapter.fetch(new ctxCtor());
@@ -564,6 +610,14 @@ describe("recommend ガードと結果メタデータ", () => {
     expect(result.maxScore).toBeGreaterThan(0);
     expect(result.scoreLabels).toEqual(riceCookerModule.scoreLabels);
     expect(result.scoreLabels.fitScore).toBeDefined();
+  });
+
+  it("matchedCountは全マッチ数・candidatesは上位MAX_CANDIDATES件のみ", async () => {
+    const fetched = await adapter.fetch(new ctxCtor());
+    const { products } = await adapter.normalize(fetched, ctxCtor());
+    const result = recommend(riceCookerModule, FULL_ANSWERS, products, new Map());
+    expect(result.matchedCount).toBeGreaterThanOrEqual(result.candidates.length);
+    expect(result.candidates.length).toBeLessThanOrEqual(MAX_CANDIDATES);
   });
 
   it("一致度%が回答条件ごとに到達可能な最大値で正規化される（attainableMaxScore）", async () => {

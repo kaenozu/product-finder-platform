@@ -41,7 +41,10 @@ export function ResultScreen({ result, copy, onRestart, onEditAnswers }: Props) 
       ) : (
         <>
           <p className="result-summary">
-            {result.candidates.length}件の候補があります。{" "}
+            条件に合う商品は{result.matchedCount}件。
+            {result.matchedCount > result.candidates.length
+              ? `上位${result.candidates.length}件を表示しています。`
+              : ""}{" "}
             {result.status === "partial" && "すべての質問に答えるとより正確です。"}
           </p>
           <div className="candidates">

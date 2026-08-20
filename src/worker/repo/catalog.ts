@@ -308,6 +308,23 @@ export async function createIngestRun(
   return runId;
 }
 
+/** 直近の成功runのcontent_hashを取得（no-op判定用） */
+export async function getLastContentHash(
+  db: D1Database,
+  categoryKey: string,
+  sourceKey: string
+): Promise<string | null> {
+  const row = await db
+    .prepare(
+      `SELECT content_hash FROM ingest_runs
+       WHERE category_key = ? AND source_key = ? AND status = 'succeeded' AND content_hash IS NOT NULL
+       ORDER BY started_at DESC LIMIT 1`
+    )
+    .bind(categoryKey, sourceKey)
+    .first<{ content_hash: string | null }>();
+  return row?.content_hash ?? null;
+}
+
 export async function finishIngestRun(
   db: D1Database,
   runId: string,
@@ -319,13 +336,14 @@ export async function finishIngestRun(
     rejectedCount: number;
     errorSummary?: string;
     candidateVersion?: string;
+    contentHash?: string | null;
   }
 ): Promise<void> {
   await db
     .prepare(
       `UPDATE ingest_runs
        SET status = ?, finished_at = ?, fetched_count = ?, normalized_count = ?,
-           rejected_count = ?, error_summary = ?, candidate_version = ?
+           rejected_count = ?, error_summary = ?, candidate_version = ?, content_hash = ?
        WHERE run_id = ?`
     )
     .bind(
@@ -336,7 +354,35 @@ export async function finishIngestRun(
       args.rejectedCount,
       args.errorSummary ?? null,
       args.candidateVersion ?? null,
+      args.contentHash ?? null,
       runId
     )
     .run();
+}
+
+/** 過去の非公開バージョン（staging/rejected）を残数 keepCount まで削除して領域を整理する */
+export async function pruneOldVersions(
+  db: D1Database,
+  categoryKey: string,
+  keepCount: number
+): Promise<void> {
+  const rows = await db
+    .prepare(
+      `SELECT version_id FROM catalog_versions
+       WHERE category_key = ? AND status IN ('staging', 'rejected')
+       ORDER BY created_at DESC
+       LIMIT -1 OFFSET ?`
+    )
+    .bind(categoryKey, keepCount)
+    .all<{ version_id: string }>();
+  const victims = (rows.results ?? []).map((r) => r.version_id);
+  if (victims.length === 0) return;
+  const placeholders = victims.map(() => "?").join(",");
+  await db.batch([
+    db.prepare(`DELETE FROM products WHERE version_id IN (${placeholders})`).bind(...victims),
+    db.prepare(`DELETE FROM product_offers WHERE version_id IN (${placeholders})`).bind(...victims),
+    db
+      .prepare(`DELETE FROM catalog_versions WHERE version_id IN (${placeholders})`)
+      .bind(...victims),
+  ]);
 }
