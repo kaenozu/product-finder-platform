@@ -1,8 +1,8 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "pitariko",
+  "name": "product-finder-platform-cron",
   "compatibility_date": "2026-08-19",
-  "pages_build_output_dir": "./dist",
+  "main": "./worker/cron.ts",
   "d1_databases": [
     {
       "binding": "DB",
@@ -11,6 +11,9 @@
       "migrations_dir": "migrations",
     },
   ],
+  "triggers": {
+    "crons": ["0 3 * * *"],
+  },
   "observability": {
     "enabled": true,
   },

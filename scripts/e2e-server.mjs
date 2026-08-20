@@ -53,10 +53,21 @@ const migrate = resolvePnpmCommand([
   "apply",
   "product-finder-platform",
   "--local",
+  "--config",
+  "wrangler.worker.jsonc",
 ]);
 await runOnce(migrate.command, migrate.args);
 
-const devCommand = resolvePnpmCommand(["wrangler", "dev", "--port", PORT, "--var", "DEV_SEED:1"]);
+const devCommand = resolvePnpmCommand([
+  "wrangler",
+  "dev",
+  "--port",
+  PORT,
+  "--var",
+  "DEV_SEED:1",
+  "--config",
+  "wrangler.worker.jsonc",
+]);
 const dev = spawn(devCommand.command, devCommand.args, {
   stdio: "inherit",
 });
