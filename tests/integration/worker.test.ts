@@ -112,7 +112,10 @@ describe("worker routing and request boundaries", () => {
     );
 
     expect(response.status).toBe(200);
-    expect((await response.json()) as unknown).toMatchObject({ categoryKey: "rice-cooker" });
+    expect((await response.json()) as unknown).toMatchObject({
+      categoryKey: "rice-cooker",
+      partialEligibility: { type: "answered_at_least", minAnswers: 2 },
+    });
   });
 
   it("未知カテゴリのconfigをdefaultカテゴリへfallbackせず404にする", async () => {

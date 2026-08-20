@@ -8,9 +8,6 @@ import { ResultScreen } from "./components/ResultScreen";
 
 type Screen = "loading" | "start" | "questions" | "result";
 
-// Worker側の canShowPartialResult と同じ現行契約。将来カテゴリごとに異なる場合は config 化する。
-const PREVIEW_MIN_ANSWERS = 2;
-
 function firstQuestionKey(config: ConfigResponse | null): string | null {
   if (!config) return null;
   return [...config.questions].sort((a, b) => a.order - b.order)[0]?.key ?? null;
@@ -109,7 +106,7 @@ export default function App({ categoryKey }: AppProps) {
       setAnswers(flow.clean);
       setCurrentKey(flow.currentKey);
       // 既存APIの途中推薦条件（2問以上）を満たしたら、質問画面の候補を自動更新する。
-      if (flow.answered >= PREVIEW_MIN_ANSWERS) {
+      if (flow.answered >= config.partialEligibility.minAnswers) {
         void refreshPreview(flow.clean);
       } else {
         invalidatePreview();
@@ -129,7 +126,7 @@ export default function App({ categoryKey }: AppProps) {
     setAnswers(nextFlow.clean);
     setCurrentKey(nextFlow.currentKey);
     setError(null);
-    if (nextFlow.answered >= PREVIEW_MIN_ANSWERS) {
+    if (nextFlow.answered >= config.partialEligibility.minAnswers) {
       void refreshPreview(nextFlow.clean);
     } else {
       invalidatePreview();
