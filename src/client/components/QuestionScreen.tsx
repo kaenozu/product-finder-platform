@@ -1,17 +1,29 @@
 import type { QuestionDefinition } from "../../shared/domain/types";
+import type { EvaluateResponse } from "../lib/api";
 import type { FlowState } from "../lib/flow";
+import { LiveCandidates } from "./LiveCandidates";
 
 interface Props {
   question: QuestionDefinition;
   flow: FlowState;
   onSelect: (value: string) => void;
   onBack: () => void;
-  onPreview: () => void;
+  previewResult: EvaluateResponse | null;
+  previewLoading: boolean;
+  onOpenPreview: () => void;
   loading: boolean;
 }
 
-export function QuestionScreen({ question, flow, onSelect, onBack, onPreview, loading }: Props) {
-  const canPreview = flow.answered >= 2;
+export function QuestionScreen({
+  question,
+  flow,
+  onSelect,
+  onBack,
+  previewResult,
+  previewLoading,
+  onOpenPreview,
+  loading,
+}: Props) {
   const progress = flow.totalSteps > 0 ? flow.answered / flow.totalSteps : 0;
 
   return (
@@ -49,18 +61,19 @@ export function QuestionScreen({ question, flow, onSelect, onBack, onPreview, lo
         ))}
       </div>
 
-      <div className="actions">
-        {flow.answered > 0 && (
+      {flow.answered > 0 && (
+        <div className="actions">
           <button className="btn-ghost" type="button" onClick={onBack} disabled={loading}>
             ← 戻る
           </button>
-        )}
-        {canPreview && !loading && (
-          <button className="btn-primary" type="button" onClick={onPreview}>
-            この条件で候補を見る
-          </button>
-        )}
-      </div>
+        </div>
+      )}
+
+      <LiveCandidates
+        result={previewResult}
+        loading={previewLoading}
+        onOpen={onOpenPreview}
+      />
     </section>
   );
 }

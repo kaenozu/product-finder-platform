@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ConfigResponse, EvaluateResponse } from "./lib/api";
 import { fetchConfig, postEvaluate } from "./lib/api";
 import { computeFlow } from "./lib/flow";
@@ -7,6 +7,9 @@ import { QuestionScreen } from "./components/QuestionScreen";
 import { ResultScreen } from "./components/ResultScreen";
 
 type Screen = "loading" | "start" | "questions" | "result";
+
+// Worker側の canShowPartialResult と同じ現行契約。将来カテゴリごとに異なる場合は config 化する。
+const PREVIEW_MIN_ANSWERS = 2;
 
 function firstQuestionKey(config: ConfigResponse | null): string | null {
   if (!config) return null;
@@ -20,7 +23,9 @@ export default function App() {
   const [currentKey, setCurrentKey] = useState<string | null>(null);
   const [result, setResult] = useState<EvaluateResponse | null>(null);
   const [loading, setLoading] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const previewRequestId = useRef(0);
 
   useEffect(() => {
     fetchConfig()
@@ -33,8 +38,14 @@ export default function App() {
       );
   }, []);
 
+  function invalidatePreview() {
+    previewRequestId.current += 1;
+    setPreviewLoading(false);
+  }
+
   async function evaluate(cleanAnswers: Record<string, string>) {
     if (!config) return;
+    invalidatePreview();
     setLoading(true);
     setError(null);
     try {
@@ -49,6 +60,26 @@ export default function App() {
     }
   }
 
+  async function refreshPreview(cleanAnswers: Record<string, string>) {
+    if (!config) return;
+    const requestId = ++previewRequestId.current;
+    setPreviewLoading(true);
+    setError(null);
+    setResult(null);
+    try {
+      const res = await postEvaluate(config.categoryKey, cleanAnswers);
+      if (requestId !== previewRequestId.current) return;
+      setResult(res);
+    } catch (e) {
+      if (requestId !== previewRequestId.current) return;
+      setError(e instanceof Error ? e.message : "候補の更新に失敗しました");
+    } finally {
+      if (requestId === previewRequestId.current) {
+        setPreviewLoading(false);
+      }
+    }
+  }
+
   function handleStart() {
     setCurrentKey(firstQuestionKey(config));
     setScreen("questions");
@@ -57,13 +88,20 @@ export default function App() {
   function handleSelect(value: string) {
     if (!config || !currentKey) return;
     const flow = computeFlow(config.questions, { ...answers, [currentKey]: value });
+    setError(null);
     if (flow.complete) {
+      setResult(null);
       void evaluate(flow.clean);
     } else {
       setAnswers(flow.clean);
       setCurrentKey(flow.currentKey);
-      // 回答を変更したら古い結果を無効化（結果へ ボタンで古い候補を見せない）
-      setResult(null);
+      // 既存APIの途中推薦条件（2問以上）を満たしたら、質問画面の候補を自動更新する。
+      if (flow.answered >= PREVIEW_MIN_ANSWERS) {
+        void refreshPreview(flow.clean);
+      } else {
+        invalidatePreview();
+        setResult(null);
+      }
     }
   }
 
@@ -77,14 +115,17 @@ export default function App() {
     const nextFlow = computeFlow(config.questions, next);
     setAnswers(nextFlow.clean);
     setCurrentKey(nextFlow.currentKey);
-    // 回答を変更したら古い結果を無効化
-    setResult(null);
+    setError(null);
+    if (nextFlow.answered >= PREVIEW_MIN_ANSWERS) {
+      void refreshPreview(nextFlow.clean);
+    } else {
+      invalidatePreview();
+      setResult(null);
+    }
   }
 
-  function handlePreview() {
-    if (!config) return;
-    const flow = computeFlow(config.questions, answers);
-    void evaluate(flow.clean);
+  function handleOpenPreview() {
+    if (result) setScreen("result");
   }
 
   function handleEditAnswers() {
@@ -95,6 +136,7 @@ export default function App() {
   }
 
   function handleRestart() {
+    invalidatePreview();
     setAnswers({});
     setResult(null);
     setCurrentKey(firstQuestionKey(config));
@@ -114,25 +156,16 @@ export default function App() {
 
   const question = config?.questions.find((q) => q.key === currentKey) ?? null;
   const flow = config ? computeFlow(config.questions, answers) : null;
+  const previewResult = result?.status === "partial" ? result : null;
 
   return (
     <main>
       <header className="app-header">
         <span className="logo">{config?.copy.appTitle}</span>
-        {screen === "questions" && flow && (
-          <>
-            {result ? (
-              <button className="link" type="button" onClick={() => setScreen("result")}>
-                結果へ
-              </button>
-            ) : (
-              flow.answered >= 2 && (
-                <button className="link" type="button" onClick={handlePreview}>
-                  候補を見る
-                </button>
-              )
-            )}
-          </>
+        {screen === "questions" && result && (
+          <button className="link" type="button" onClick={handleOpenPreview}>
+            {result.noMatch ? "条件を確認" : result.status === "final" ? "結果へ" : "候補を詳しく"}
+          </button>
         )}
       </header>
 
@@ -144,7 +177,9 @@ export default function App() {
           flow={flow}
           onSelect={handleSelect}
           onBack={handleBack}
-          onPreview={handlePreview}
+          previewResult={previewResult}
+          previewLoading={previewLoading}
+          onOpenPreview={handleOpenPreview}
           loading={loading}
         />
       )}
