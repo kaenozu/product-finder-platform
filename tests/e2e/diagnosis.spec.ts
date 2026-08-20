@@ -23,16 +23,26 @@ test.describe("炊飯器選び診断", () => {
     await expect(page.getByText("診断結果・確定")).toBeVisible();
   });
 
-  test("2問だけ答えて途中プレビューができる", async ({ page }) => {
+  test("2問答えると質問画面のまま暫定候補が自動表示される", async ({ page }) => {
     await page.goto("/");
     await page.getByRole("button", { name: "診断をはじめる" }).click();
 
     await page.getByRole("button", { name: "3合（2〜3人分）" }).click();
+    const previewResponse = page.waitForResponse(
+      (response) =>
+        response.url().includes("/api/diagnosis/evaluate") && response.request().method() === "POST"
+    );
     await page.getByRole("button", { name: /^IH炊飯器/ }).click();
-    await page.getByRole("button", { name: "この条件で候補を見る" }).click();
+    expect((await previewResponse).ok()).toBe(true);
 
+    await expect(page.getByRole("heading", { name: "予算の目安は?" })).toBeVisible();
+    const liveCandidates = page.locator(".live-candidates");
+    await expect(liveCandidates.getByText("回答途中の候補")).toBeVisible();
+    await expect(liveCandidates.locator(".live-candidate").first()).toBeVisible();
+    await expect(liveCandidates.getByText(/一致度 \d+%/).first()).toBeVisible();
+
+    await liveCandidates.getByRole("button", { name: "詳しく見る" }).click();
     await expect(page.getByText("診断結果・途中")).toBeVisible();
-    await expect(page.locator(".product-card").first()).toBeVisible();
   });
 
   test("機能重視を選ぶと同時調理の質問が現れる", async ({ page }) => {
@@ -72,11 +82,11 @@ test.describe("炊飯器選び診断", () => {
     expect(thirdText).toContain("全6問程度");
   });
 
-  test("1問だけでは途中プレビューボタンが出ない", async ({ page }) => {
+  test("1問だけでは暫定候補を表示しない", async ({ page }) => {
     await page.goto("/");
     await page.getByRole("button", { name: "診断をはじめる" }).click();
     await page.getByRole("button", { name: "5.5合（5人以上）" }).click();
-    await expect(page.getByRole("button", { name: "この条件で候補を見る" })).toBeHidden();
+    await expect(page.locator(".live-candidates")).toBeHidden();
     await expect(page.getByRole("heading", { name: "加熱方式はこだわりますか?" })).toBeVisible();
   });
 
