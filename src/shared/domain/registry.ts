@@ -62,3 +62,8 @@ export function getModule<C, P extends CatalogProduct>(key: string): CategoryMod
 export function listModules(): string[] {
   return [...MODULES.keys()];
 }
+
+const registrationIssues = validateRegisteredModules();
+if (registrationIssues.length > 0) {
+  throw new Error(`invalid category modules: ${registrationIssues.join("; ")}`);
+}

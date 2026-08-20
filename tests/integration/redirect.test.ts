@@ -17,10 +17,10 @@ const CATEGORY = "rice-cooker";
 const workerEnv = env as unknown as Env;
 const db = () => workerEnv.DB;
 
-function makeProduct(id: string, categoryKey = CATEGORY): RiceCookerProduct {
+function makeProduct(id: string): RiceCookerProduct {
   return {
     productId: id,
-    categoryKey,
+    categoryKey: "rice-cooker",
     manufacturer: "TEST",
     model: id,
     displayName: id,
@@ -126,6 +126,17 @@ describe("/go redirect", () => {
 
   it("https以外のoutbound_urlはリダイレクトしない（オープンリダイレクト対策）", async () => {
     await seedOffer({ outboundUrl: "http://evil.example.com/redirect" });
+    const res = await handleRedirect(
+      workerEnv,
+      new Request("http://localhost"),
+      "rakuten",
+      "item-1"
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it("httpsで始まっていてもURLとして不正ならリダイレクトしない", async () => {
+    await seedOffer({ outboundUrl: "https://" });
     const res = await handleRedirect(
       workerEnv,
       new Request("http://localhost"),
