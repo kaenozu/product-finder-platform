@@ -30,6 +30,9 @@ export default function App() {
   useEffect(() => {
     fetchConfig()
       .then((c) => {
+        document.title = `${c.copy.appTitle} — ${c.copy.heroTitle}`;
+        const meta = document.querySelector('meta[name="description"]');
+        if (meta) meta.setAttribute("content", c.copy.heroLead);
         setConfig(c);
         setScreen("start");
       })
@@ -131,7 +134,17 @@ export default function App() {
   function handleEditAnswers() {
     if (!config) return;
     const flow = computeFlow(config.questions, answers);
-    setCurrentKey(flow.complete ? (flow.path[flow.path.length - 1] ?? null) : flow.currentKey);
+    if (flow.complete) {
+      const lastKey = flow.path[flow.path.length - 1];
+      const editableAnswers = { ...flow.clean };
+      if (lastKey) delete editableAnswers[lastKey];
+      const editableFlow = computeFlow(config.questions, editableAnswers);
+      setAnswers(editableFlow.clean);
+      setCurrentKey(editableFlow.currentKey);
+      setResult(null);
+    } else {
+      setCurrentKey(flow.currentKey);
+    }
     setScreen("questions");
   }
 
@@ -146,7 +159,9 @@ export default function App() {
   if (error && !config) {
     return (
       <main>
-        <p className="note">{error}</p>
+        <p className="note error" role="alert">
+          {error}
+        </p>
         <button className="btn-primary" type="button" onClick={() => location.reload()}>
           再読み込み
         </button>
@@ -161,7 +176,10 @@ export default function App() {
   return (
     <main>
       <header className="app-header">
-        <span className="logo">{config?.copy.appTitle}</span>
+        <span className="logo">
+          <img className="logo-mark" src="/favicon.svg" alt="" width="20" height="20" />
+          {config?.copy.appTitle}
+        </span>
         {screen === "questions" && result && (
           <button className="link" type="button" onClick={handleOpenPreview}>
             {result.noMatch ? "条件を確認" : result.status === "final" ? "結果へ" : "候補を詳しく"}
@@ -169,7 +187,11 @@ export default function App() {
         )}
       </header>
 
-      {screen === "loading" && <p className="note">読み込み中…</p>}
+      {screen === "loading" && (
+        <p className="note" role="status">
+          読み込み中…
+        </p>
+      )}
       {screen === "start" && config && <StartScreen copy={config.copy} onStart={handleStart} />}
       {screen === "questions" && question && flow && (
         <QuestionScreen
@@ -191,8 +213,16 @@ export default function App() {
           onEditAnswers={handleEditAnswers}
         />
       )}
-      {loading && screen === "questions" && <p className="note">候補を計算しています…</p>}
-      {error && screen !== "loading" && <p className="note error">{error}</p>}
+      {loading && screen === "questions" && (
+        <p className="note" role="status">
+          候補を計算しています…
+        </p>
+      )}
+      {error && screen !== "loading" && (
+        <p className="note error" role="alert">
+          {error}
+        </p>
+      )}
     </main>
   );
 }

@@ -8,14 +8,24 @@
  */
 import { spawn } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
+import { resolvePnpmCommand } from "./pnpm-command.mjs";
 
-const PORT = process.env.PORT ?? "8787";
+const portValue = process.env.PORT ?? "8787";
+const portNumber = Number(portValue);
+if (!Number.isInteger(portNumber) || portNumber < 1 || portNumber > 65535) {
+  throw new Error(`invalid PORT: ${portValue}`);
+}
+const PORT = String(portNumber);
 const BASE = `http://127.0.0.1:${PORT}`;
-const PNPM = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 
+/**
+ * @param {string} cmd
+ * @param {string[]} args
+ * @returns {Promise<void>}
+ */
 function runOnce(cmd, args) {
   return new Promise((resolve, reject) => {
-    const p = spawn(cmd, args, { stdio: "inherit", shell: true });
+    const p = spawn(cmd, args, { stdio: "inherit" });
     p.on("exit", (code) => (code === 0 ? resolve() : reject(new Error(`${cmd} exited ${code}`))));
     p.on("error", reject);
   });
@@ -34,19 +44,32 @@ async function waitForHealth() {
   throw new Error("wrangler dev did not become healthy in time");
 }
 
-await runOnce(PNPM, ["build"]);
-await runOnce(PNPM, [
+const build = resolvePnpmCommand(["build"]);
+await runOnce(build.command, build.args);
+const migrate = resolvePnpmCommand([
   "wrangler",
   "d1",
   "migrations",
   "apply",
   "product-finder-platform",
   "--local",
+  "--config",
+  "wrangler.worker.jsonc",
 ]);
+await runOnce(migrate.command, migrate.args);
 
-const dev = spawn(PNPM, ["wrangler", "dev", "--port", PORT, "--var", "DEV_SEED:1"], {
+const devCommand = resolvePnpmCommand([
+  "wrangler",
+  "dev",
+  "--port",
+  PORT,
+  "--var",
+  "DEV_SEED:1",
+  "--config",
+  "wrangler.worker.jsonc",
+]);
+const dev = spawn(devCommand.command, devCommand.args, {
   stdio: "inherit",
-  shell: true,
 });
 
 dev.on("exit", (code) => process.exit(code ?? 0));
@@ -64,7 +87,11 @@ try {
     const text = await seed.text();
     throw new Error(`seed failed: ${seed.status} ${text}`);
   }
-  const summary = await seed.json();
+  /**
+   * @typedef {{ status?: string, normalizedCount?: number, versionId?: string | null }} SeedResult
+   * @typedef {SeedResult & { results?: SeedResult[] }} SeedSummary
+   */
+  const summary = /** @type {SeedSummary} */ (await seed.json());
   const first = summary.results?.[0] ?? summary;
   console.log(
     `[e2e-server] seeded catalog: ${first.status} products=${first.normalizedCount} version=${first.versionId ?? "-"}`

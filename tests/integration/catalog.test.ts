@@ -12,21 +12,27 @@ import {
   getActiveProductById,
   listOffersForProducts,
   getActiveVersionId,
+  pruneOldVersions,
 } from "../../src/worker/repo/catalog";
 import { runIngest } from "../../src/worker/ingest/run";
 import { ManualRiceCookerAdapter } from "../../src/worker/adapters/manual";
 import { handleEvaluate, handleProductDetail } from "../../src/worker/api";
-import type { ProductOffer } from "../../src/shared/domain/types";
-import type { RiceCookerProduct } from "../../src/shared/domain/rice-cooker/types";
+import type { CatalogProduct, ProductOffer } from "../../src/shared/domain/types";
+import type { RiceCookerSpecs } from "../../src/shared/domain/rice-cooker/types";
+import type { FetchedResult, NormalizeContext } from "../../src/worker/adapters/types";
 
 const CATEGORY = "rice-cooker";
 const workerEnv = env as unknown as Env;
 const db = () => workerEnv.DB;
 
-function makeProduct(id: string, capacityGou = 3): RiceCookerProduct {
+function makeProduct(
+  id: string,
+  capacityGou = 3,
+  categoryKey = CATEGORY
+): CatalogProduct<RiceCookerSpecs> {
   return {
     productId: id,
-    categoryKey: CATEGORY,
+    categoryKey,
     manufacturer: "TEST",
     model: id,
     displayName: id,
@@ -73,7 +79,7 @@ describe("catalog repository", () => {
     expect(await getActiveVersionId(db(), CATEGORY)).toBe(versionId);
     const active = await listActiveProducts(db(), CATEGORY);
     expect(active.map((p) => p.productId).sort()).toEqual(["p-1", "p-2"]);
-    expect(active[0].specs).toEqual(p1.specs);
+    expect(active[0]!.specs).toEqual(p1.specs);
 
     const detail = await getActiveProductById(db(), CATEGORY, "p-2");
     expect(detail?.specs.capacityGou).toBe(5.5);
@@ -85,10 +91,11 @@ describe("catalog repository", () => {
     const p1 = { ...makeProduct("p-1"), referencePriceYen: 42500 };
     const versionId = await createStagingVersion(db(), CATEGORY, "test", 1);
     await insertProducts(db(), versionId, [p1]);
+    await setVersionStatus(db(), versionId, "valid");
     await publishVersion(db(), CATEGORY, versionId);
 
     const active = await listActiveProducts(db(), CATEGORY);
-    expect(active[0].referencePriceYen).toBe(42500);
+    expect(active[0]!.referencePriceYen).toBe(42500);
     const detail = await getActiveProductById(db(), CATEGORY, "p-1");
     expect(detail?.referencePriceYen).toBe(42500);
   });
@@ -108,15 +115,143 @@ describe("catalog repository", () => {
       updatedAt: "2026-08-19T00:00:00Z",
     };
     await insertOffers(db(), versionId, [offer]);
+    await setVersionStatus(db(), versionId, "valid");
     await publishVersion(db(), CATEGORY, versionId);
 
     const offers = await listOffersForProducts(db(), CATEGORY, ["p-1"]);
     expect(offers).toHaveLength(1);
-    expect(offers[0]).toMatchObject({
+    expect(offers[0]!).toMatchObject({
       productId: "p-1",
       providerKey: "rakuten",
       priceMinor: 2500000,
     });
+  });
+
+  it("100商品以上でもD1のbound parameter上限を超えずoffersを取得できる", async () => {
+    await ensureCatalogState(db(), CATEGORY);
+    const products = Array.from({ length: 100 }, (_, index) => makeProduct(`p-${index + 1}`));
+    const versionId = await createStagingVersion(db(), CATEGORY, "test", products.length);
+    await insertProducts(db(), versionId, products);
+    await insertOffers(db(), versionId, [
+      {
+        productId: "p-100",
+        providerKey: "rakuten",
+        providerItemId: "item-100",
+        outboundUrl: "https://item.rakuten.co.jp/example/item-100",
+        priceMinor: 100000,
+        currency: "JPY",
+        availability: "in_stock",
+        updatedAt: "2026-08-19T00:00:00Z",
+      },
+    ]);
+    await setVersionStatus(db(), versionId, "valid");
+    await publishVersion(db(), CATEGORY, versionId);
+
+    const offers = await listOffersForProducts(
+      db(),
+      CATEGORY,
+      products.map((product) => product.productId)
+    );
+    expect(offers.map((offer) => offer.providerItemId)).toEqual(["item-100"]);
+  });
+
+  it("遅れて完了した古いversionは新しいactive versionを巻き戻さない", async () => {
+    await ensureCatalogState(db(), CATEGORY, new Date("2026-08-19T00:00:00Z"));
+    const olderVersion = await createStagingVersion(
+      db(),
+      CATEGORY,
+      "test",
+      1,
+      new Date("2026-08-19T00:00:00Z")
+    );
+    const newerVersion = await createStagingVersion(
+      db(),
+      CATEGORY,
+      "test",
+      1,
+      new Date("2026-08-20T00:00:00Z")
+    );
+    await insertProducts(db(), olderVersion, [makeProduct("older")]);
+    await insertProducts(db(), newerVersion, [makeProduct("newer")]);
+    await setVersionStatus(db(), olderVersion, "valid");
+    await setVersionStatus(db(), newerVersion, "valid");
+
+    expect(
+      await publishVersion(db(), CATEGORY, newerVersion, new Date("2026-08-20T00:00:00Z"))
+    ).toBe(true);
+    expect(
+      await publishVersion(db(), CATEGORY, olderVersion, new Date("2026-08-19T00:00:00Z"))
+    ).toBe(false);
+    expect(await getActiveVersionId(db(), CATEGORY)).toBe(newerVersion);
+
+    const older = await db()
+      .prepare("SELECT status FROM catalog_versions WHERE version_id = ?")
+      .bind(olderVersion)
+      .first<{ status: string }>();
+    expect(older?.status).toBe("rejected");
+  });
+
+  it("公開直後に別versionがactiveになっても自身の公開成功を正しく返す", async () => {
+    await ensureCatalogState(db(), CATEGORY, new Date("2026-08-18T00:00:00Z"));
+    const first = await createStagingVersion(
+      db(),
+      CATEGORY,
+      "test",
+      1,
+      new Date("2026-08-19T00:00:00Z")
+    );
+    const newer = await createStagingVersion(
+      db(),
+      CATEGORY,
+      "test",
+      1,
+      new Date("2026-08-20T00:00:00Z")
+    );
+    await setVersionStatus(db(), first, "valid");
+    await setVersionStatus(db(), newer, "valid");
+
+    const realDb = db();
+    let interleaved = false;
+    const interleavingDb = {
+      prepare: realDb.prepare.bind(realDb),
+      batch: async (statements: D1PreparedStatement[]) => {
+        const results = await realDb.batch(statements);
+        if (!interleaved) {
+          interleaved = true;
+          await publishVersion(realDb, CATEGORY, newer, new Date("2026-08-20T00:00:00Z"));
+        }
+        return results;
+      },
+    } as D1Database;
+
+    expect(
+      await publishVersion(interleavingDb, CATEGORY, first, new Date("2026-08-19T00:00:00Z"))
+    ).toBe(true);
+    expect(await getActiveVersionId(realDb, CATEGORY)).toBe(newer);
+  });
+
+  it("101件以上の古いversionをD1上限内のchunkで削除できる", async () => {
+    await ensureCatalogState(db(), CATEGORY);
+    for (let index = 0; index < 103; index++) {
+      const versionId = await createStagingVersion(
+        db(),
+        CATEGORY,
+        "test",
+        0,
+        new Date(Date.UTC(2026, 0, 1, 0, 0, index))
+      );
+      await setVersionStatus(db(), versionId, "rejected");
+    }
+
+    await pruneOldVersions(db(), CATEGORY, 2);
+
+    const remaining = await db()
+      .prepare(
+        "SELECT COUNT(*) AS count FROM catalog_versions WHERE category_key = ? AND status IN ('staging', 'rejected')"
+      )
+      .bind(CATEGORY)
+      .first<{ count: number }>();
+    expect(remaining?.count).toBe(2);
   });
 
   it("別カテゴリのofferは混ざらない（categoryKeyでSQL絞り込み）", async () => {
@@ -136,13 +271,14 @@ describe("catalog repository", () => {
         updatedAt: "2026-08-19T00:00:00Z",
       },
     ]);
+    await setVersionStatus(db(), v1, "valid");
     await publishVersion(db(), CATEGORY, v1);
 
     // 別カテゴリのactive版にも同じproductIdのofferを登録
     const otherCategory = "other-cat";
     await ensureCatalogState(db(), otherCategory);
     const v2 = await createStagingVersion(db(), otherCategory, "test", 1);
-    await insertProducts(db(), v2, [makeProduct("p-1", otherCategory as "rice-cooker")]);
+    await insertProducts(db(), v2, [makeProduct("p-1", 3, otherCategory)]);
     await insertOffers(db(), v2, [
       {
         productId: "p-1",
@@ -155,11 +291,12 @@ describe("catalog repository", () => {
         updatedAt: "2026-08-19T00:00:00Z",
       },
     ]);
+    await setVersionStatus(db(), v2, "valid");
     await publishVersion(db(), otherCategory, v2);
 
     const offers = await listOffersForProducts(db(), CATEGORY, ["p-1"]);
     expect(offers).toHaveLength(1);
-    expect(offers[0].providerItemId).toBe("item-rice");
+    expect(offers[0]!.providerItemId).toBe("item-rice");
   });
 });
 
@@ -214,6 +351,26 @@ describe("ingest pipeline（品質ゲート込み）", () => {
     // active 版は変化していない
     const active = await listActiveProducts(db(), CATEGORY);
     expect(active.length).toBe(first.normalizedCount);
+  });
+
+  it("同一内容でも鮮度ゲートを先に評価し、古いカタログをskip成功扱いしない", async () => {
+    const first = await runIngest(
+      workerEnv,
+      new ManualRiceCookerAdapter(),
+      CATEGORY,
+      new Date("2026-08-19T00:00:00Z")
+    );
+    expect(first.status).toBe("succeeded");
+
+    const stale = await runIngest(
+      workerEnv,
+      new ManualRiceCookerAdapter(),
+      CATEGORY,
+      new Date("2026-11-18T00:00:00Z")
+    );
+    expect(stale.status).toBe("rejected");
+    expect(stale.gates.find((gate) => gate.name === "freshness")?.pass).toBe(false);
+    expect(await getActiveVersionId(db(), CATEGORY)).toBe(first.versionId);
   });
 
   it("内容が変わると再公開される（content hash 変化）", async () => {
@@ -291,8 +448,8 @@ describe("API handlers（D1連動）", () => {
     expect(body.matchedCount).toBeGreaterThanOrEqual(body.candidates.length);
     // スコア降順
     for (let i = 1; i < body.candidates.length; i++) {
-      expect(body.candidates[i - 1].totalScore).toBeGreaterThanOrEqual(
-        body.candidates[i].totalScore
+      expect(body.candidates[i - 1]!.totalScore).toBeGreaterThanOrEqual(
+        body.candidates[i]!.totalScore
       );
     }
     // メタデータと表示用スペック・日本語ラベル
@@ -300,7 +457,7 @@ describe("API handlers（D1連動）", () => {
     expect(body.scoreLabels.fitScore).toBe("容量との相性");
     for (const c of body.candidates) {
       expect(c.specItems.length).toBeGreaterThan(0);
-      expect(c.specItems[0].value).toMatch(/合$/);
+      expect(c.specItems[0]!.value).toMatch(/合$/);
       expect(Object.keys(c.scoreBreakdown).length).toBeGreaterThan(0);
     }
   });
@@ -323,6 +480,17 @@ describe("API handlers（D1連動）", () => {
     expect(res.status).toBe(400);
   });
 
+  it("evaluate: 先行する必須質問を飛ばした回答を400で拒否する", async () => {
+    const res = await handleEvaluate(workerEnv, {
+      categoryKey: "rice-cooker",
+      answers: { budget: "any", priority: "taste" },
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string; issues: string[] };
+    expect(body.error).toBe("invalid_answers");
+    expect(body.issues).toContain("inactive question key: budget");
+  });
+
   it("evaluate: 未知カテゴリで400", async () => {
     const res = await handleEvaluate(workerEnv, {
       categoryKey: "unknown-cat",
@@ -339,11 +507,18 @@ describe("API handlers（D1連動）", () => {
     await ensureCatalogState(db(), CATEGORY);
     const v = await createStagingVersion(db(), CATEGORY, "test", 1);
     await insertProducts(db(), v, [makeProduct("only-3gou", 3)]);
+    await setVersionStatus(db(), v, "valid");
     await publishVersion(db(), CATEGORY, v);
 
     const res = await handleEvaluate(workerEnv, {
       categoryKey: "rice-cooker",
-      answers: { cookVolume: "5.5", heating: "any", priority: "taste", installWidth: "under24" },
+      answers: {
+        cookVolume: "5.5",
+        heating: "any",
+        budget: "any",
+        priority: "taste",
+        installWidth: "under24",
+      },
     });
     expect(res.status).toBe(200);
     const body = (await res.json()) as { noMatch: boolean; noMatchReasons: string[] };
@@ -361,7 +536,7 @@ describe("API handlers（D1連動）", () => {
     };
     expect(body.product.productId).toBe("panasonic-sr-x910e");
     expect(body.sources.length).toBeGreaterThan(0);
-    expect(body.sources[0].url).toMatch(/^https:\/\//);
+    expect(body.sources[0]!.url).toMatch(/^https:\/\//);
     expect(body.specItems.some((s) => s.value.endsWith("合"))).toBe(true);
   });
 

@@ -23,6 +23,22 @@ test.describe("炊飯器選び診断", () => {
     await expect(page.getByText("診断結果・確定")).toBeVisible();
   });
 
+  test("結果から回答変更へ戻ると最後の質問が未回答の正しい番号で表示される", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("button", { name: "診断をはじめる" }).click();
+    await page.getByRole("button", { name: "5.5合（5人以上）" }).click();
+    await page.getByRole("button", { name: "特にこだわらない" }).click();
+    await page.getByRole("button", { name: "こだわらない" }).click();
+    await page.getByRole("button", { name: "炊き上がりの味" }).click();
+    await page.getByRole("button", { name: "制限なし" }).click();
+
+    await page.getByRole("button", { name: "← 回答を変更する" }).click();
+
+    await expect(page.getByRole("heading", { name: "置き場所の幅の制限は?" })).toBeFocused();
+    await expect(page.getByText("質問 5", { exact: true })).toBeVisible();
+    await expect(page.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "4");
+  });
+
   test("2問答えると質問画面のまま暫定候補が自動表示される", async ({ page }) => {
     await page.goto("/");
     await page.getByRole("button", { name: "診断をはじめる" }).click();

@@ -1,7 +1,7 @@
 import type { EvaluateResponse } from "../lib/api";
 import type { CategoryCopy } from "../../shared/domain/types";
 import { ProductCard } from "./ProductCard";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 interface Props {
   result: EvaluateResponse;
@@ -12,11 +12,18 @@ interface Props {
 
 export function ResultScreen({ result, copy, onRestart, onEditAnswers }: Props) {
   const [expanded, setExpanded] = useState<string | null>(null);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+
+  useEffect(() => {
+    headingRef.current?.focus();
+  }, []);
 
   return (
     <section className="result" aria-live="polite">
       <p className="eyebrow">診断結果{result.status === "final" ? "・確定" : "・途中"}</p>
-      <h2>{result.noMatch ? copy.resultNoMatchTitle : copy.resultTitle}</h2>
+      <h2 ref={headingRef} tabIndex={-1}>
+        {result.noMatch ? copy.resultNoMatchTitle : copy.resultTitle}
+      </h2>
       {result.warnings.length > 0 && (
         <div className="banner warn">
           {result.warnings.map((w) => (

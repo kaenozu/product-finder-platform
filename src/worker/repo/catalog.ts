@@ -216,19 +216,51 @@ export async function publishVersion(
   categoryKey: string,
   versionId: string,
   now: Date = new Date()
-): Promise<void> {
-  await db.batch([
+): Promise<boolean> {
+  const [activateResult] = await db.batch([
     db
       .prepare(
-        "UPDATE catalog_versions SET status = 'published', published_at = ? WHERE version_id = ?"
+        `UPDATE catalog_state
+         SET active_version_id = ?, updated_at = ?
+         WHERE category_key = ?
+           AND EXISTS (
+             SELECT 1 FROM catalog_versions candidate
+             WHERE candidate.version_id = ? AND candidate.category_key = ? AND candidate.status = 'valid'
+           )
+           AND (
+             active_version_id IS NULL OR
+             (SELECT created_at FROM catalog_versions WHERE version_id = active_version_id) <
+             (SELECT created_at FROM catalog_versions WHERE version_id = ?)
+           )`
       )
-      .bind(iso(now), versionId),
+      .bind(versionId, iso(now), categoryKey, versionId, categoryKey, versionId),
     db
       .prepare(
-        "INSERT OR REPLACE INTO catalog_state (category_key, active_version_id, updated_at) VALUES (?, ?, ?)"
+        `UPDATE catalog_versions
+         SET status = 'published', published_at = ?
+         WHERE version_id = ?
+           AND EXISTS (
+             SELECT 1 FROM catalog_state
+             WHERE category_key = ? AND active_version_id = ?
+           )`
       )
-      .bind(categoryKey, versionId, iso(now)),
+      .bind(iso(now), versionId, categoryKey, versionId),
+    db
+      .prepare(
+        `UPDATE catalog_versions
+         SET status = 'rejected', published_at = NULL
+         WHERE version_id = ?
+           AND NOT EXISTS (
+             SELECT 1 FROM catalog_state
+             WHERE category_key = ? AND active_version_id = ?
+           )`
+      )
+      .bind(versionId, categoryKey, versionId),
   ]);
+
+  // The batch result belongs to this publication attempt. Re-reading catalog_state here
+  // would introduce a TOCTOU race if a newer version publishes immediately after this batch.
+  return (activateResult?.meta.changes ?? 0) > 0;
 }
 
 /** 現在の公開バージョンの商品一覧を取得 */
@@ -277,19 +309,26 @@ export async function listOffersForProducts(
   productIds: string[]
 ): Promise<ProductOffer[]> {
   if (productIds.length === 0) return [];
-  const placeholders = productIds.map(() => "?").join(",");
-  const rows = await db
-    .prepare(
-      `SELECT o.product_id, o.provider_key, o.provider_item_id, o.outbound_url,
-              o.price_minor, o.currency, o.availability, o.updated_at
-       FROM product_offers o
-       JOIN catalog_state s ON s.active_version_id = o.version_id
-       JOIN catalog_versions v ON v.version_id = o.version_id AND v.category_key = ?
-       WHERE o.product_id IN (${placeholders})`
-    )
-    .bind(categoryKey, ...productIds)
-    .all<OfferRow>();
-  return (rows.results ?? []).map(rowToOffer);
+  const offers: ProductOffer[] = [];
+  const uniqueProductIds = [...new Set(productIds)];
+  // D1は1クエリ100 bound parametersまで。categoryKey分を除き99件ずつ取得する。
+  for (let i = 0; i < uniqueProductIds.length; i += 99) {
+    const chunk = uniqueProductIds.slice(i, i + 99);
+    const placeholders = chunk.map(() => "?").join(",");
+    const rows = await db
+      .prepare(
+        `SELECT o.product_id, o.provider_key, o.provider_item_id, o.outbound_url,
+                o.price_minor, o.currency, o.availability, o.updated_at
+         FROM product_offers o
+         JOIN catalog_state s ON s.active_version_id = o.version_id
+         JOIN catalog_versions v ON v.version_id = o.version_id AND v.category_key = ?
+         WHERE o.product_id IN (${placeholders})`
+      )
+      .bind(categoryKey, ...chunk)
+      .all<OfferRow>();
+    offers.push(...(rows.results ?? []).map(rowToOffer));
+  }
+  return offers;
 }
 
 export async function createIngestRun(
@@ -377,12 +416,17 @@ export async function pruneOldVersions(
     .all<{ version_id: string }>();
   const victims = (rows.results ?? []).map((r) => r.version_id);
   if (victims.length === 0) return;
-  const placeholders = victims.map(() => "?").join(",");
-  await db.batch([
-    db.prepare(`DELETE FROM products WHERE version_id IN (${placeholders})`).bind(...victims),
-    db.prepare(`DELETE FROM product_offers WHERE version_id IN (${placeholders})`).bind(...victims),
-    db
-      .prepare(`DELETE FROM catalog_versions WHERE version_id IN (${placeholders})`)
-      .bind(...victims),
-  ]);
+  // D1 permits at most 100 bound parameters per query. Delete each group atomically,
+  // and keep processing until every selected victim has been removed.
+  for (let i = 0; i < victims.length; i += 100) {
+    const chunk = victims.slice(i, i + 100);
+    const placeholders = chunk.map(() => "?").join(",");
+    await db.batch([
+      db.prepare(`DELETE FROM products WHERE version_id IN (${placeholders})`).bind(...chunk),
+      db.prepare(`DELETE FROM product_offers WHERE version_id IN (${placeholders})`).bind(...chunk),
+      db
+        .prepare(`DELETE FROM catalog_versions WHERE version_id IN (${placeholders})`)
+        .bind(...chunk),
+    ]);
+  }
 }

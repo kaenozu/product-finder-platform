@@ -37,6 +37,7 @@ function level(totalScore: number, maxScore: number): string {
 export function ProductCard({ candidate, rank, maxScore, scoreLabels, expanded, onToggle }: Props) {
   const { product, sources, reasons, totalScore, scoreBreakdown, specItems } = candidate;
   const top = rank === 1;
+  const detailId = `product-detail-${product.productId}`;
 
   return (
     <article className={`product-card ${expanded ? "expanded" : ""} ${top ? "top" : ""}`}>
@@ -71,8 +72,18 @@ export function ProductCard({ candidate, rank, maxScore, scoreLabels, expanded, 
         ))}
       </ul>
 
+      <button
+        className="btn-ghost toggle"
+        type="button"
+        onClick={onToggle}
+        aria-expanded={expanded}
+        aria-controls={detailId}
+      >
+        {expanded ? "詳しく閉じる" : "詳しく見る"}
+      </button>
+
       {expanded && (
-        <div className="product-card-detail">
+        <div className="product-card-detail" id={detailId}>
           <h4>
             スコア内訳（合計 {Math.round(totalScore * 10) / 10} / {maxScore}）
           </h4>
@@ -120,15 +131,6 @@ export function ProductCard({ candidate, rank, maxScore, scoreLabels, expanded, 
           )}
         </div>
       )}
-
-      <button
-        className="btn-ghost toggle"
-        type="button"
-        onClick={onToggle}
-        aria-expanded={expanded}
-      >
-        {expanded ? "詳しく閉じる" : "詳しく見る"}
-      </button>
     </article>
   );
 }

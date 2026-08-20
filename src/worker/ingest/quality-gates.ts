@@ -75,21 +75,28 @@ export function hardConditionRegressionGate(
 
 /** gate 8: freshness — ソース更新日時が古すぎない（古いデータを再公開しない） */
 export function freshnessGate(products: CatalogProduct[], now: Date): QualityGateResult {
-  const latest = products.reduce<string | null>((max, p) => {
-    if (max === null || p.sourceUpdatedAt > max) return p.sourceUpdatedAt;
-    return max;
-  }, null);
-  if (latest === null) {
+  if (products.length === 0) {
     return { name: "freshness", pass: false, message: "更新日時不明の商品しかない" };
   }
-  const ageDays = (now.getTime() - new Date(latest).getTime()) / 86_400_000;
+
+  const timestamps = products.map((product) => Date.parse(product.sourceUpdatedAt));
+  if (timestamps.some((timestamp) => !Number.isFinite(timestamp))) {
+    return { name: "freshness", pass: false, message: "不正な更新日時の商品がある" };
+  }
+  if (timestamps.some((timestamp) => timestamp > now.getTime() + 86_400_000)) {
+    return { name: "freshness", pass: false, message: "未来の更新日時の商品がある" };
+  }
+
+  const oldestTimestamp = Math.min(...timestamps);
+  const oldest = new Date(oldestTimestamp).toISOString();
+  const ageDays = (now.getTime() - oldestTimestamp) / 86_400_000;
   const pass = ageDays <= MAX_SOURCE_AGE_DAYS;
   return {
     name: "freshness",
     pass,
     message: pass
-      ? `最新更新 ${latest.slice(0, 10)}（${Math.floor(ageDays)}日前）`
-      : `データが古い（最新更新 ${latest.slice(0, 10)}、${Math.floor(ageDays)}日前）`,
+      ? `最古更新 ${oldest.slice(0, 10)}（${Math.floor(ageDays)}日前）`
+      : `古い商品データがある（最古更新 ${oldest.slice(0, 10)}、${Math.floor(ageDays)}日前）`,
   };
 }
 

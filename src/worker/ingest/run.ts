@@ -136,27 +136,6 @@ export async function runIngest(
     const module = getModule(categoryKey);
     const hash = contentHash(products, normalized.offers);
 
-    // no-op 検出: 直前の成功runと同じ内容なら再公開せずスキップ
-    const lastHash = await getLastContentHash(db, categoryKey, adapter.sourceKey);
-    if (lastHash !== null && lastHash === hash) {
-      await finishIngestRun(db, runId, "succeeded", now, {
-        fetchedCount: fetched.meta.fetchedCount,
-        normalizedCount: normalized.products.length,
-        rejectedCount: normalized.rejectedCount,
-        contentHash: hash,
-      });
-      return {
-        runId,
-        status: "skipped",
-        versionId: null,
-        gates: [],
-        fetchedCount: fetched.meta.fetchedCount,
-        normalizedCount: normalized.products.length,
-        rejectedCount: normalized.rejectedCount,
-        errorSummary: "content unchanged (skipped)",
-      };
-    }
-
     // 前回公開版の商品数（version回帰ゲート用）
     const previousActiveVersion = await getActiveVersionId(db, categoryKey);
     const previousCount =
@@ -200,6 +179,27 @@ export async function runIngest(
       };
     }
 
+    // no-opでも鮮度・schemaを含む全品質ゲートを毎回通し、古い/破損データを成功扱いしない。
+    const lastHash = await getLastContentHash(db, categoryKey, adapter.sourceKey);
+    if (lastHash !== null && lastHash === hash) {
+      await finishIngestRun(db, runId, "succeeded", now, {
+        fetchedCount: fetched.meta.fetchedCount,
+        normalizedCount: normalized.products.length,
+        rejectedCount: normalized.rejectedCount,
+        contentHash: hash,
+      });
+      return {
+        runId,
+        status: "skipped",
+        versionId: null,
+        gates,
+        fetchedCount: fetched.meta.fetchedCount,
+        normalizedCount: normalized.products.length,
+        rejectedCount: normalized.rejectedCount,
+        errorSummary: "content unchanged (skipped)",
+      };
+    }
+
     const versionId = await createStagingVersion(
       db,
       categoryKey,
@@ -210,7 +210,27 @@ export async function runIngest(
     await insertProducts(db, versionId, products);
     await insertOffers(db, versionId, normalized.offers);
     await setVersionStatus(db, versionId, "valid", now);
-    await publishVersion(db, categoryKey, versionId, now);
+    const published = await publishVersion(db, categoryKey, versionId, now);
+    if (!published) {
+      const errorSummary = "newer active catalog already published";
+      await finishIngestRun(db, runId, "rejected", now, {
+        fetchedCount: fetched.meta.fetchedCount,
+        normalizedCount: normalized.products.length,
+        rejectedCount: normalized.rejectedCount,
+        candidateVersion: versionId,
+        errorSummary,
+      });
+      return {
+        runId,
+        status: "rejected",
+        versionId: null,
+        gates,
+        fetchedCount: fetched.meta.fetchedCount,
+        normalizedCount: normalized.products.length,
+        rejectedCount: normalized.rejectedCount,
+        errorSummary,
+      };
+    }
 
     await finishIngestRun(db, runId, "succeeded", now, {
       fetchedCount: fetched.meta.fetchedCount,
@@ -221,7 +241,11 @@ export async function runIngest(
     });
 
     // 非公開の古いstaging/rejectedバージョンを整理（最新2件まで残す）
-    await pruneOldVersions(db, categoryKey, 2);
+    try {
+      await pruneOldVersions(db, categoryKey, 2);
+    } catch (error) {
+      console.error(`[ingest] prune failed category=${categoryKey}: ${String(error)}`);
+    }
 
     return {
       runId,

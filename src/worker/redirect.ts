@@ -16,16 +16,16 @@ export async function handleRedirect(
     return json({ error: "invalid_redirect" }, { status: 400 });
   }
 
-  const offer = await env.DB.prepare(
+  const offers = await env.DB.prepare(
     `SELECT o.version_id, o.product_id, p.category_key, o.provider_item_id, o.outbound_url
        FROM product_offers o
        JOIN catalog_state s ON s.active_version_id = o.version_id
        JOIN products p ON p.version_id = o.version_id AND p.product_id = o.product_id
        WHERE o.provider_key = ? AND o.provider_item_id = ?
-       LIMIT 1`
+       LIMIT 2`
   )
     .bind(providerKey, token)
-    .first<{
+    .all<{
       version_id: string;
       product_id: string;
       category_key: string;
@@ -33,7 +33,18 @@ export async function handleRedirect(
       outbound_url: string;
     }>();
 
-  if (!offer || !offer.outbound_url.startsWith("https://")) {
+  const [offer] = offers.results ?? [];
+  if (!offer || offers.results?.length !== 1) {
+    return json({ error: "redirect_not_found" }, { status: 404 });
+  }
+
+  let outboundUrl: URL;
+  try {
+    outboundUrl = new URL(offer.outbound_url);
+  } catch {
+    return json({ error: "redirect_not_found" }, { status: 404 });
+  }
+  if (outboundUrl.protocol !== "https:" || !outboundUrl.hostname) {
     return json({ error: "redirect_not_found" }, { status: 404 });
   }
 
@@ -59,5 +70,5 @@ export async function handleRedirect(
   }
 
   void request;
-  return Response.redirect(offer.outbound_url, 302);
+  return Response.redirect(outboundUrl.href, 302);
 }

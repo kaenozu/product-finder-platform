@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { recommend, MAX_CANDIDATES } from "../shared/domain/engine";
+import { activeQuestionKeys } from "../shared/domain/flow";
 import { getModule, listModules } from "../shared/domain/registry";
 import type { CatalogProduct, ProductOffer, AnswerRecord } from "../shared/domain/types";
 import { getActiveProductById, listActiveProducts, listOffersForProducts } from "./repo/catalog";
@@ -7,8 +8,21 @@ import { json } from "./http";
 import type { Env } from "./env";
 
 export const evaluationRequestSchema = z.object({
-  categoryKey: z.string().min(1),
-  answers: z.record(z.string(), z.string()),
+  categoryKey: z
+    .string()
+    .min(1)
+    .max(64)
+    .regex(/^[a-z0-9-]+$/),
+  answers: z
+    .record(
+      z
+        .string()
+        .min(1)
+        .max(64)
+        .regex(/^[A-Za-z0-9_-]+$/),
+      z.string().min(1).max(128)
+    )
+    .refine((answers) => Object.keys(answers).length <= 100, "回答数が多すぎます"),
 });
 
 function validateAnswers(moduleKey: string, answers: AnswerRecord): string[] {
@@ -22,6 +36,12 @@ function validateAnswers(moduleKey: string, answers: AnswerRecord): string[] {
     }
     if (!question.options.some((o) => o.value === value)) {
       errors.push(`invalid value for ${key}: ${value}`);
+    }
+  }
+  const activeKeys = new Set(activeQuestionKeys(module.questions, answers));
+  for (const key of Object.keys(answers)) {
+    if (!activeKeys.has(key) && module.questions.some((question) => question.key === key)) {
+      errors.push(`inactive question key: ${key}`);
     }
   }
   return errors;
