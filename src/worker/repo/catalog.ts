@@ -87,6 +87,49 @@ export async function getActiveVersionId(
   return row?.active_version_id ?? null;
 }
 
+export interface CatalogReadiness {
+  categoryKey: string;
+  activeVersionId: string | null;
+  activeVersionStatus: CatalogVersionStatus | null;
+  productCount: number;
+  offerCount: number;
+}
+
+/** 公開診断に使えるactive catalogの状態を集約して返す。 */
+export async function getCatalogReadiness(
+  db: D1Database,
+  categoryKey: string
+): Promise<CatalogReadiness> {
+  const row = await db
+    .prepare(
+      `SELECT s.active_version_id,
+              v.status AS active_version_status,
+              COUNT(DISTINCT p.product_id) AS product_count,
+              COUNT(DISTINCT o.product_id) AS offer_count
+       FROM catalog_state s
+       LEFT JOIN catalog_versions v ON v.version_id = s.active_version_id
+       LEFT JOIN products p ON p.version_id = s.active_version_id AND p.category_key = ?
+       LEFT JOIN product_offers o ON o.version_id = s.active_version_id
+       WHERE s.category_key = ?
+       GROUP BY s.active_version_id, v.status`
+    )
+    .bind(categoryKey, categoryKey)
+    .first<{
+      active_version_id: string | null;
+      active_version_status: CatalogVersionStatus | null;
+      product_count: number;
+      offer_count: number;
+    }>();
+
+  return {
+    categoryKey,
+    activeVersionId: row?.active_version_id ?? null,
+    activeVersionStatus: row?.active_version_status ?? null,
+    productCount: row?.product_count ?? 0,
+    offerCount: row?.offer_count ?? 0,
+  };
+}
+
 /** staging バージョンを作成し、その version_id を返す */
 export async function createStagingVersion(
   db: D1Database,

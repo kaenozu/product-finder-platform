@@ -1,6 +1,12 @@
 import { corsHeaders, json } from "./http";
 import type { Env } from "./env";
-import { handleCategories, handleConfig, handleEvaluate, handleProductDetail } from "./api";
+import {
+  handleCategories,
+  handleConfig,
+  handleEvaluate,
+  handleProductDetail,
+  handleReady,
+} from "./api";
 import { handleRedirect } from "./redirect";
 import { handleDevSeed } from "./dev-seed";
 import { handleImageProxy } from "./image-proxy";
@@ -57,6 +63,9 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
   if (isApi) {
     if (pathname === "/api/health" || pathname === "/api/health/") {
       return json({ ok: true, service: "product-finder-platform", ts: new Date().toISOString() });
+    }
+    if (pathname === "/api/ready" || pathname === "/api/ready/") {
+      return handleReady(env);
     }
     if (pathname === "/api/dev/seed" || pathname === "/api/dev/seed/") {
       // ローカル開発/e2e専用。設定ミスで公開環境にDEV_SEEDが入っても実行しない。

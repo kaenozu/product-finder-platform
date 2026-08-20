@@ -22,6 +22,16 @@ describe("worker routing and request boundaries", () => {
     expect(response.headers.get("x-content-type-options")).toBe("nosniff");
   });
 
+  it("公開カタログ未投入時はreadyを503で返し、診断の空結果と区別する", async () => {
+    const response = await worker.fetch(new Request("http://localhost/api/ready"), workerEnv);
+
+    expect(response.status).toBe(503);
+    expect((await response.json()) as unknown).toMatchObject({
+      ok: false,
+      service: "product-finder-platform",
+    });
+  });
+
   it("32KiBを超える診断bodyを413で拒否する", async () => {
     const response = await worker.fetch(
       new Request("http://localhost/api/diagnosis/evaluate", {
