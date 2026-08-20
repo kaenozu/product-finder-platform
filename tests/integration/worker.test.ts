@@ -95,3 +95,51 @@ describe("worker routing and request boundaries", () => {
     expect(body.categories[0]!.copy.appTitle).toBeTruthy();
   });
 });
+
+describe("image proxy", () => {
+  const img = (url: string) => new Request(`http://localhost/img?url=${encodeURIComponent(url)}`);
+
+  it("urlパラメータなしは400", async () => {
+    const response = await worker.fetch(new Request("http://localhost/img"), workerEnv);
+    expect(response.status).toBe(400);
+  });
+
+  it("不正なURLは400", async () => {
+    const response = await worker.fetch(img("not a url"), workerEnv);
+    expect(response.status).toBe(400);
+  });
+
+  it("https以外は400", async () => {
+    const response = await worker.fetch(img("http://www.irisohyama.co.jp/a.jpg"), workerEnv);
+    expect(response.status).toBe(400);
+  });
+
+  it("ホワイトリスト外のホストは403（SSRF対策）", async () => {
+    const response = await worker.fetch(img("https://malicious.example.com/steal.png"), workerEnv);
+    expect(response.status).toBe(403);
+  });
+
+  it("ローカルアドレスへのSSRF試行は403", async () => {
+    const response = await worker.fetch(img("https://127.0.0.1/secret"), workerEnv);
+    expect(response.status).toBe(403);
+  });
+
+  it("許可ホストの画像をプロキシして取得する", async () => {
+    const response = await worker.fetch(
+      img("https://panasonicjp.scene7.com/is/image/panasonicjp/SR-N210E-K_5_5?fmt=png-alpha"),
+      workerEnv
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toMatch(/^image\//);
+    const bytes = await response.arrayBuffer();
+    expect(bytes.byteLength).toBeGreaterThan(100);
+  });
+
+  it("画像以外のレスポンスは502", async () => {
+    const response = await worker.fetch(
+      img("https://www.irisohyama.co.jp/ricecooker/rc-msa/"),
+      workerEnv
+    );
+    expect(response.status).toBe(502);
+  });
+});

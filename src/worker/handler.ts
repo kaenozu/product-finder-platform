@@ -3,6 +3,7 @@ import type { Env } from "./env";
 import { handleCategories, handleConfig, handleEvaluate, handleProductDetail } from "./api";
 import { handleRedirect } from "./redirect";
 import { handleDevSeed } from "./dev-seed";
+import { handleImageProxy } from "./image-proxy";
 
 const MAX_JSON_BODY_BYTES = 32 * 1024;
 
@@ -111,6 +112,11 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
       return json({ error: "invalid_path_encoding" }, { status: 400 });
     }
     return handleRedirect(env, request, providerKey, token);
+  }
+
+  // 商品画像のプロキシ（一部メーカーの直リンクブロック対策）
+  if (pathname === "/img" || pathname === "/img/") {
+    return handleImageProxy(request);
   }
 
   return null;

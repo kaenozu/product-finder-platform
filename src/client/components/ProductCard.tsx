@@ -1,6 +1,12 @@
 import type { CandidateResponse } from "../lib/api";
 import { AFFILIATE_REL } from "./AffiliateNote";
 
+/** 商品画像は Worker の /img プロキシを経由して取得する
+ * （一部メーカーの画像サーバーがブラウザからの直リンクをブロックするため） */
+function imageProxySrc(imageUrl: string): string {
+  return `/img?url=${encodeURIComponent(imageUrl)}`;
+}
+
 interface Props {
   candidate: CandidateResponse;
   rank: number;
@@ -97,7 +103,7 @@ export function ProductCard({ candidate, rank, maxScore, scoreLabels, expanded, 
       {product.imageUrl && (
         <div className="product-image">
           <img
-            src={product.imageUrl}
+            src={imageProxySrc(product.imageUrl)}
             alt={product.displayName}
             loading="lazy"
             decoding="async"
