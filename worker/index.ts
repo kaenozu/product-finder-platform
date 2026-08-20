@@ -7,6 +7,31 @@ import { handleDevSeed } from "../src/worker/dev-seed";
 
 const MAX_JSON_BODY_BYTES = 32 * 1024;
 
+async function readBodyWithLimit(request: Request, maxBytes: number): Promise<string | null> {
+  if (!request.body) return "";
+
+  const reader = request.body.getReader();
+  const decoder = new TextDecoder();
+  let byteLength = 0;
+  let body = "";
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      byteLength += value.byteLength;
+      if (byteLength > maxBytes) {
+        await reader.cancel("payload_too_large");
+        return null;
+      }
+      body += decoder.decode(value, { stream: true });
+    }
+    return body + decoder.decode();
+  } finally {
+    reader.releaseLock();
+  }
+}
+
 function decodePathSegment(value: string): string | null {
   try {
     return decodeURIComponent(value);
@@ -51,8 +76,8 @@ export default {
         if (Number.isFinite(declaredLength) && declaredLength > MAX_JSON_BODY_BYTES) {
           return json({ error: "payload_too_large" }, { status: 413 });
         }
-        const rawBody = await request.text();
-        if (new TextEncoder().encode(rawBody).byteLength > MAX_JSON_BODY_BYTES) {
+        const rawBody = await readBodyWithLimit(request, MAX_JSON_BODY_BYTES);
+        if (rawBody === null) {
           return json({ error: "payload_too_large" }, { status: 413 });
         }
         let body: unknown = null;

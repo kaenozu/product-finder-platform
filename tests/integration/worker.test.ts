@@ -35,6 +35,45 @@ describe("worker routing and request boundaries", () => {
     expect(response.status).toBe(413);
   });
 
+  it("Content-Lengthなしの巨大bodyを上限超過時点でcancelする", async () => {
+    let cancelled = false;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        controller.enqueue(new Uint8Array(16 * 1024));
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    const request = new Request("http://localhost/api/diagnosis/evaluate", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body,
+      duplex: "half",
+    } as RequestInit & { duplex: "half" });
+
+    const response = await worker.fetch(request, workerEnv);
+
+    expect(response.status).toBe(413);
+    expect(cancelled).toBe(true);
+  });
+
+  it("32KiBちょうどのmultibyte bodyはサイズ制限を通過する", async () => {
+    const encoded = new TextEncoder().encode("あ".repeat(10_922) + "ab");
+    expect(encoded.byteLength).toBe(32 * 1024);
+    const response = await worker.fetch(
+      new Request("http://localhost/api/diagnosis/evaluate", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: encoded,
+      }),
+      workerEnv
+    );
+
+    expect(response.status).toBe(400);
+    expect((await response.json()) as unknown).toMatchObject({ error: "invalid_request" });
+  });
+
   it("DEV_SEEDが誤設定されても公開ホストでは403にする", async () => {
     const response = await worker.fetch(
       new Request("https://preview.example.com/api/dev/seed", { method: "POST" }),

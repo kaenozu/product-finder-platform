@@ -217,7 +217,7 @@ export async function publishVersion(
   versionId: string,
   now: Date = new Date()
 ): Promise<boolean> {
-  await db.batch([
+  const [activateResult] = await db.batch([
     db
       .prepare(
         `UPDATE catalog_state
@@ -258,7 +258,9 @@ export async function publishVersion(
       .bind(versionId, categoryKey, versionId),
   ]);
 
-  return (await getActiveVersionId(db, categoryKey)) === versionId;
+  // The batch result belongs to this publication attempt. Re-reading catalog_state here
+  // would introduce a TOCTOU race if a newer version publishes immediately after this batch.
+  return (activateResult?.meta.changes ?? 0) > 0;
 }
 
 /** 現在の公開バージョンの商品一覧を取得 */
@@ -414,12 +416,17 @@ export async function pruneOldVersions(
     .all<{ version_id: string }>();
   const victims = (rows.results ?? []).map((r) => r.version_id);
   if (victims.length === 0) return;
-  const placeholders = victims.map(() => "?").join(",");
-  await db.batch([
-    db.prepare(`DELETE FROM products WHERE version_id IN (${placeholders})`).bind(...victims),
-    db.prepare(`DELETE FROM product_offers WHERE version_id IN (${placeholders})`).bind(...victims),
-    db
-      .prepare(`DELETE FROM catalog_versions WHERE version_id IN (${placeholders})`)
-      .bind(...victims),
-  ]);
+  // D1 permits at most 100 bound parameters per query. Delete each group atomically,
+  // and keep processing until every selected victim has been removed.
+  for (let i = 0; i < victims.length; i += 100) {
+    const chunk = victims.slice(i, i + 100);
+    const placeholders = chunk.map(() => "?").join(",");
+    await db.batch([
+      db.prepare(`DELETE FROM products WHERE version_id IN (${placeholders})`).bind(...chunk),
+      db.prepare(`DELETE FROM product_offers WHERE version_id IN (${placeholders})`).bind(...chunk),
+      db
+        .prepare(`DELETE FROM catalog_versions WHERE version_id IN (${placeholders})`)
+        .bind(...chunk),
+    ]);
+  }
 }

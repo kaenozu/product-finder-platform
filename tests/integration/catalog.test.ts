@@ -12,6 +12,7 @@ import {
   getActiveProductById,
   listOffersForProducts,
   getActiveVersionId,
+  pruneOldVersions,
 } from "../../src/worker/repo/catalog";
 import { runIngest } from "../../src/worker/ingest/run";
 import { ManualRiceCookerAdapter } from "../../src/worker/adapters/manual";
@@ -188,6 +189,69 @@ describe("catalog repository", () => {
       .bind(olderVersion)
       .first<{ status: string }>();
     expect(older?.status).toBe("rejected");
+  });
+
+  it("公開直後に別versionがactiveになっても自身の公開成功を正しく返す", async () => {
+    await ensureCatalogState(db(), CATEGORY, new Date("2026-08-18T00:00:00Z"));
+    const first = await createStagingVersion(
+      db(),
+      CATEGORY,
+      "test",
+      1,
+      new Date("2026-08-19T00:00:00Z")
+    );
+    const newer = await createStagingVersion(
+      db(),
+      CATEGORY,
+      "test",
+      1,
+      new Date("2026-08-20T00:00:00Z")
+    );
+    await setVersionStatus(db(), first, "valid");
+    await setVersionStatus(db(), newer, "valid");
+
+    const realDb = db();
+    let interleaved = false;
+    const interleavingDb = {
+      prepare: realDb.prepare.bind(realDb),
+      batch: async (statements: D1PreparedStatement[]) => {
+        const results = await realDb.batch(statements);
+        if (!interleaved) {
+          interleaved = true;
+          await publishVersion(realDb, CATEGORY, newer, new Date("2026-08-20T00:00:00Z"));
+        }
+        return results;
+      },
+    } as D1Database;
+
+    expect(
+      await publishVersion(interleavingDb, CATEGORY, first, new Date("2026-08-19T00:00:00Z"))
+    ).toBe(true);
+    expect(await getActiveVersionId(realDb, CATEGORY)).toBe(newer);
+  });
+
+  it("101件以上の古いversionをD1上限内のchunkで削除できる", async () => {
+    await ensureCatalogState(db(), CATEGORY);
+    for (let index = 0; index < 103; index++) {
+      const versionId = await createStagingVersion(
+        db(),
+        CATEGORY,
+        "test",
+        0,
+        new Date(Date.UTC(2026, 0, 1, 0, 0, index))
+      );
+      await setVersionStatus(db(), versionId, "rejected");
+    }
+
+    await pruneOldVersions(db(), CATEGORY, 2);
+
+    const remaining = await db()
+      .prepare(
+        "SELECT COUNT(*) AS count FROM catalog_versions WHERE category_key = ? AND status IN ('staging', 'rejected')"
+      )
+      .bind(CATEGORY)
+      .first<{ count: number }>();
+    expect(remaining?.count).toBe(2);
   });
 
   it("別カテゴリのofferは混ざらない（categoryKeyでSQL絞り込み）", async () => {

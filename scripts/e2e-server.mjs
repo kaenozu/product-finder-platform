@@ -9,9 +9,25 @@
 import { spawn } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
 
-const PORT = process.env.PORT ?? "8787";
+const portValue = process.env.PORT ?? "8787";
+const portNumber = Number(portValue);
+if (!Number.isInteger(portNumber) || portNumber < 1 || portNumber > 65535) {
+  throw new Error(`invalid PORT: ${portValue}`);
+}
+const PORT = String(portNumber);
 const BASE = `http://127.0.0.1:${PORT}`;
 const PNPM = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+
+/**
+ * @param {string[]} args
+ * @returns {{ command: string, args: string[] }}
+ */
+function pnpmCommand(args) {
+  if (process.platform !== "win32") return { command: PNPM, args };
+  const pnpmCli = process.env.npm_execpath;
+  if (!pnpmCli) throw new Error("npm_execpath is required to launch pnpm on Windows");
+  return { command: process.execPath, args: [pnpmCli, ...args] };
+}
 
 /**
  * @param {string} cmd
@@ -20,7 +36,7 @@ const PNPM = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
  */
 function runOnce(cmd, args) {
   return new Promise((resolve, reject) => {
-    const p = spawn(cmd, args, { stdio: "inherit", shell: true });
+    const p = spawn(cmd, args, { stdio: "inherit" });
     p.on("exit", (code) => (code === 0 ? resolve() : reject(new Error(`${cmd} exited ${code}`))));
     p.on("error", reject);
   });
@@ -39,8 +55,9 @@ async function waitForHealth() {
   throw new Error("wrangler dev did not become healthy in time");
 }
 
-await runOnce(PNPM, ["build"]);
-await runOnce(PNPM, [
+const build = pnpmCommand(["build"]);
+await runOnce(build.command, build.args);
+const migrate = pnpmCommand([
   "wrangler",
   "d1",
   "migrations",
@@ -48,10 +65,11 @@ await runOnce(PNPM, [
   "product-finder-platform",
   "--local",
 ]);
+await runOnce(migrate.command, migrate.args);
 
-const dev = spawn(PNPM, ["wrangler", "dev", "--port", PORT, "--var", "DEV_SEED:1"], {
+const devCommand = pnpmCommand(["wrangler", "dev", "--port", PORT, "--var", "DEV_SEED:1"]);
+const dev = spawn(devCommand.command, devCommand.args, {
   stdio: "inherit",
-  shell: true,
 });
 
 dev.on("exit", (code) => process.exit(code ?? 0));
