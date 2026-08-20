@@ -131,7 +131,17 @@ export default function App() {
   function handleEditAnswers() {
     if (!config) return;
     const flow = computeFlow(config.questions, answers);
-    setCurrentKey(flow.complete ? (flow.path[flow.path.length - 1] ?? null) : flow.currentKey);
+    if (flow.complete) {
+      const lastKey = flow.path[flow.path.length - 1];
+      const editableAnswers = { ...flow.clean };
+      if (lastKey) delete editableAnswers[lastKey];
+      const editableFlow = computeFlow(config.questions, editableAnswers);
+      setAnswers(editableFlow.clean);
+      setCurrentKey(editableFlow.currentKey);
+      setResult(null);
+    } else {
+      setCurrentKey(flow.currentKey);
+    }
     setScreen("questions");
   }
 
@@ -146,7 +156,9 @@ export default function App() {
   if (error && !config) {
     return (
       <main>
-        <p className="note">{error}</p>
+        <p className="note error" role="alert">
+          {error}
+        </p>
         <button className="btn-primary" type="button" onClick={() => location.reload()}>
           再読み込み
         </button>
@@ -169,7 +181,11 @@ export default function App() {
         )}
       </header>
 
-      {screen === "loading" && <p className="note">読み込み中…</p>}
+      {screen === "loading" && (
+        <p className="note" role="status">
+          読み込み中…
+        </p>
+      )}
       {screen === "start" && config && <StartScreen copy={config.copy} onStart={handleStart} />}
       {screen === "questions" && question && flow && (
         <QuestionScreen
@@ -191,8 +207,16 @@ export default function App() {
           onEditAnswers={handleEditAnswers}
         />
       )}
-      {loading && screen === "questions" && <p className="note">候補を計算しています…</p>}
-      {error && screen !== "loading" && <p className="note error">{error}</p>}
+      {loading && screen === "questions" && (
+        <p className="note" role="status">
+          候補を計算しています…
+        </p>
+      )}
+      {error && screen !== "loading" && (
+        <p className="note error" role="alert">
+          {error}
+        </p>
+      )}
     </main>
   );
 }

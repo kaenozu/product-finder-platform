@@ -5,6 +5,7 @@
   --text: #1d1d1f;
   --text-secondary: #6e6e73;
   --accent: #0071e3;
+  --accent-fill: #0071e3;
   --accent-press: #0062c4;
   --border: rgba(0, 0, 0, 0.08);
   --danger: #d70015;
@@ -20,6 +21,7 @@
     --text: #f5f5f7;
     --text-secondary: #a1a1a6;
     --accent: #2997ff;
+    --accent-fill: #006edc;
     --accent-press: #0a84ff;
     --border: rgba(255, 255, 255, 0.12);
     --shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
@@ -53,7 +55,8 @@ body {
 main {
   max-width: 640px;
   margin: 0 auto;
-  padding: 0 1rem 4rem;
+  padding: env(safe-area-inset-top, 0) max(1rem, env(safe-area-inset-right, 0))
+    calc(4rem + env(safe-area-inset-bottom, 0)) max(1rem, env(safe-area-inset-left, 0));
 }
 
 .app-header {
@@ -170,7 +173,7 @@ h4 {
   appearance: none;
   border: 0;
   cursor: pointer;
-  background: var(--accent);
+  background: var(--accent-fill);
   color: #fff;
   font: inherit;
   font-weight: 600;
@@ -384,7 +387,7 @@ h4 {
 
 .product-card.top .rank-badge {
   color: #fff;
-  background: var(--accent);
+  background: var(--accent-fill);
 }
 
 .score {

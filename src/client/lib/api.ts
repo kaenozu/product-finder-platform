@@ -46,10 +46,21 @@ export interface EvaluateResponse {
 }
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, {
-    ...init,
-    headers: { "content-type": "application/json", ...init?.headers },
-  });
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      ...init,
+      headers: { "content-type": "application/json", ...init?.headers },
+      signal: AbortSignal.timeout(15_000),
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "TimeoutError") {
+      throw new Error("通信がタイムアウトしました。もう一度お試しください", {
+        cause: error,
+      });
+    }
+    throw error;
+  }
   if (!res.ok) {
     const body = (await res.json().catch(() => null)) as {
       error?: string;

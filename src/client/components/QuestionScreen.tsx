@@ -1,4 +1,5 @@
 import type { QuestionDefinition } from "../../shared/domain/types";
+import { useEffect, useRef } from "react";
 import type { EvaluateResponse } from "../lib/api";
 import type { FlowState } from "../lib/flow";
 import { LiveCandidates } from "./LiveCandidates";
@@ -25,6 +26,11 @@ export function QuestionScreen({
   loading,
 }: Props) {
   const progress = flow.totalSteps > 0 ? flow.answered / flow.totalSteps : 0;
+  const headingRef = useRef<HTMLHeadingElement>(null);
+
+  useEffect(() => {
+    headingRef.current?.focus();
+  }, [question.key]);
 
   return (
     <section className="question" aria-live="polite">
@@ -42,7 +48,9 @@ export function QuestionScreen({
         />
       </div>
       <p className="eyebrow">質問 {flow.answered + 1}</p>
-      <h2>{question.title}</h2>
+      <h2 ref={headingRef} tabIndex={-1}>
+        {question.title}
+      </h2>
       {question.description && <p className="lead">{question.description}</p>}
 
       <div className="options" role="group" aria-label={question.title}>
