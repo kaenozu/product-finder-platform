@@ -116,6 +116,7 @@ export async function handleEvaluate(env: Env, body: unknown): Promise<Response>
     criteria: result.criteria,
     noMatch: result.noMatch,
     noMatchReasons: result.noMatchReasons,
+    matchedCount: result.matchedCount,
     warnings: result.warnings,
     maxScore: result.maxScore,
     scoreLabels: result.scoreLabels,

@@ -193,20 +193,56 @@ describe("ingest pipeline（品質ゲート込み）", () => {
     expect(run?.candidate_version).toBe(summary.versionId);
   });
 
-  it("再実行してもversion回帰ゲートを通る", async () => {
-    await runIngest(
+  it("同一内容の再取り込みは no-op でスキップされる（content hash）", async () => {
+    const first = await runIngest(
       workerEnv,
       new ManualRiceCookerAdapter(),
       CATEGORY,
       new Date("2026-08-19T00:00:00Z")
     );
+    expect(first.status).toBe("succeeded");
+
     const second = await runIngest(
       workerEnv,
       new ManualRiceCookerAdapter(),
       CATEGORY,
       new Date("2026-08-20T00:00:00Z")
     );
+    expect(second.status).toBe("skipped");
+    expect(second.versionId).toBeNull();
+
+    // active 版は変化していない
+    const active = await listActiveProducts(db(), CATEGORY);
+    expect(active.length).toBe(first.normalizedCount);
+  });
+
+  it("内容が変わると再公開される（content hash 変化）", async () => {
+    const first = await runIngest(
+      workerEnv,
+      new ManualRiceCookerAdapter(),
+      CATEGORY,
+      new Date("2026-08-19T00:00:00Z")
+    );
+    expect(first.status).toBe("succeeded");
+
+    // 内容が変わったソースを模したアダプタ（1商品の容量を変える）
+    const changedAdapter = new (class extends ManualRiceCookerAdapter {
+      override async normalize(raw: FetchedResult, ctx: NormalizeContext) {
+        const base = await super.normalize(raw, ctx);
+        const products = base.products.map((p, i) =>
+          i === 0 ? { ...p, specs: { ...p.specs, capacityGou: 10 } } : p
+        );
+        return { ...base, products };
+      }
+    })();
+    const second = await runIngest(
+      workerEnv,
+      changedAdapter,
+      CATEGORY,
+      new Date("2026-08-20T00:00:00Z")
+    );
     expect(second.status).toBe("succeeded");
+    expect(second.versionId).not.toBeNull();
   });
 });
 
@@ -246,10 +282,13 @@ describe("API handlers（D1連動）", () => {
         scoreBreakdown: Record<string, number>;
       }>;
       noMatch: boolean;
+      matchedCount: number;
     };
     expect(body.status).toBe("final");
     expect(body.noMatch).toBe(false);
     expect(body.candidates.length).toBeGreaterThan(0);
+    // マッチ総数は表示候補（上位5件）以上
+    expect(body.matchedCount).toBeGreaterThanOrEqual(body.candidates.length);
     // スコア降順
     for (let i = 1; i < body.candidates.length; i++) {
       expect(body.candidates[i - 1].totalScore).toBeGreaterThanOrEqual(

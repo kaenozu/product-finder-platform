@@ -38,6 +38,7 @@ export interface EvaluateResponse {
   criteria: Record<string, unknown>;
   noMatch: boolean;
   noMatchReasons: string[];
+  matchedCount: number;
   warnings: string[];
   maxScore: number;
   scoreLabels: Record<string, string>;
