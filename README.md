@@ -1,6 +1,6 @@
 # Product Finder Platform
 
-「商品選択診断エンジン」の汎用基盤。**炊飯器（ブランド: めしナビ）**を第一カテゴリとして実証し、成功後に選択肢が多く・スペックだけでは選びにくく・購入単価が高いカテゴリ（洗濯機など）へ横展開します。
+「商品選択診断エンジン」の汎用基盤。**炊飯器（消費者向けブランド: pitariko）**を第一カテゴリとして実証し、将来は同じ基盤で別カテゴリへ横展開します。
 
 > 炊飯器を売るサービスを作っているのではなく、「商品選択診断エンジン」を炊飯器で実証している。
 
@@ -9,8 +9,8 @@
 | レイヤー             | 名前                      | 用途                                    |
 | -------------------- | ------------------------- | --------------------------------------- |
 | 基盤（本リポジトリ） | `product-finder-platform` | 診断エンジン・カタログ・API・計測を実装 |
-| ブランド             | `めしナビ`                | 炊飯器カテゴリの消費者向けブランド      |
-| 将来のブランド例     | `せんたくナビ` 等         | 同一エンジンから別カテゴリを展開        |
+| ブランド             | `pitariko`                | 炊飯器カテゴリの消費者向けブランド      |
+| 将来のブランド例     | カテゴリごとに別途定義    | 同一エンジンから別カテゴリを展開        |
 
 ## アーキテクチャ
 
@@ -31,7 +31,7 @@ category module（質問・判定ロジック）
 - `src/worker/` — Cloudflare Worker の API・cron・リダイレクト・devシード
 - `src/client/` — React UI（モバイル/デスクトップ対応・日本語）
 - `migrations/` — D1スキーマ
-- `data/` — カタログ定義（手動キュレーション・公式検証済み）
+- `src/worker/data/` — カタログ定義（手動キュレーション・公式検証済み）
 - `tests/` — 単体・統合・e2e（Playwright）
 
 ## コマンド
@@ -54,14 +54,24 @@ pnpm check:deploy   # wrangler deploy --dry-run
 - 品質ゲート7種を通過したバージョンのみ publish（失敗時は rejected で条件自動緩和なし）
 - 価格はオープン価格のため `referencePriceYen` は原則 null（UIでは「オープン価格」表示）
 
+## Production構成と既知の制約
+
+- 公開アプリ: https://pitariko.pages.dev/
+- Pages側のUIと、診断API・カタログ・cronを提供するCloudflare Workerを分離する。
+- 本番カタログはD1の`catalog_state` / `catalog_versions` / `products` / `product_offers`で管理する。
+- 開発用seedは本番データ投入の代替ではない。Production D1のmigration・catalog publish・rollbackは明示的な運用手順で行う。
+- 現在の炊飯器adapterは手動キュレーション中心で、offers/価格の自動取得が実データ更新パイプラインとして成立しているとは限らない。価格や在庫は推測しない。
+- Productionでactive catalogが欠損・空の場合、診断APIが一時的なカタログ障害と通常のno-matchを区別できない既知Issueがある: [#13](https://github.com/kaenozu/product-finder-platform/issues/13)
+- 未知カテゴリを炊飯器へfallbackさせず`404 unsupported_category`で拒否する: [#14](https://github.com/kaenozu/product-finder-platform/issues/14)
+
 ## 品質管理
 
 - `pnpm verify:ci`（format/lint/typecheck/unit/integration/build/audit/deploy dry-run/E2E）を全修正で実行
 - GitHub Actions（`.github/workflows/ci.yml`）で push/PR 時に同一ゲートを自動実行
 
-## 未実施（TODO）
+## 未実施・保留（TODO）
 
-- 本番デプロイ（wrangler 未ログイン）
-- 楽天APIキー設定 → offers 収集・`/go/` リダイレクト有効化
-- カテゴリ追加（洗濯機など）の実証
+- Production D1のcatalog readiness確認とIssue #13の修正
+- offers/価格の実データ更新adapter（規約・rate limit・freshness policyを含む）
+- カテゴリ追加（炊飯器以外）の実証
 - SEO / OGタグ / 診断状態のURL共有
