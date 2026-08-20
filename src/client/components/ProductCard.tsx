@@ -9,17 +9,32 @@ interface Props {
   onToggle: () => void;
 }
 
-function formatPrice(value: number | null): string {
-  return value == null ? "オープン価格" : `¥${value.toLocaleString("ja-JP")}〜`;
-}
+type PriceInfo =
+  | { kind: "sale"; label: "実売価格"; value: number }
+  | { kind: "reference"; label: "参考価格"; value: number }
+  | { kind: "unknown"; label: "価格情報なし"; value: null };
 
-/** 表示価格: 実売オファー最安値を優先し、なければカタログ参考価格 */
-function effectivePriceYen(candidate: CandidateResponse): number | null {
+function priceInfo(candidate: CandidateResponse): PriceInfo {
   const prices = candidate.offers
     .map((o) => o.priceMinor)
     .filter((p): p is number => p !== null && p > 0);
-  if (prices.length > 0) return Math.min(...prices) / 100;
-  return candidate.product.referencePriceYen;
+  if (prices.length > 0) {
+    return { kind: "sale", label: "実売価格", value: Math.min(...prices) / 100 };
+  }
+  if (candidate.product.referencePriceYen !== null) {
+    return {
+      kind: "reference",
+      label: "参考価格",
+      value: candidate.product.referencePriceYen,
+    };
+  }
+  return { kind: "unknown", label: "価格情報なし", value: null };
+}
+
+function formatPrice(info: PriceInfo): string {
+  return info.value === null
+    ? info.label
+    : `${info.label} ¥${info.value.toLocaleString("ja-JP")}〜`;
 }
 
 function matchPercent(totalScore: number, maxScore: number): number {
@@ -27,22 +42,17 @@ function matchPercent(totalScore: number, maxScore: number): number {
   return Math.round((totalScore / maxScore) * 100);
 }
 
-function level(totalScore: number, maxScore: number): string {
-  const ratio = totalScore / maxScore;
-  if (ratio >= 0.8) return "高い";
-  if (ratio >= 0.6) return "ふつう";
-  return "低め";
-}
-
 export function ProductCard({ candidate, rank, maxScore, scoreLabels, expanded, onToggle }: Props) {
   const { product, sources, reasons, totalScore, scoreBreakdown, specItems } = candidate;
   const top = rank === 1;
   const detailId = `product-detail-${product.productId}`;
+  const price = priceInfo(candidate);
+  const primaryOffer = candidate.offers[0];
 
   return (
     <article className={`product-card ${expanded ? "expanded" : ""} ${top ? "top" : ""}`}>
       <div className="product-card-head">
-        <div className="rank-badge">{top ? "ベスト" : `${rank}位`}</div>
+        <div className="rank-badge">{top ? "あなたなら、まずこれ" : `${rank}位`}</div>
         <div className="product-card-main">
           <h3>{product.displayName}</h3>
           <p className="model">
@@ -50,10 +60,11 @@ export function ProductCard({ candidate, rank, maxScore, scoreLabels, expanded, 
           </p>
         </div>
         <div className="score">
-          <strong>一致度 {matchPercent(totalScore, maxScore)}%</strong>
-          <span>おすすめ度 {level(totalScore, maxScore)}</span>
+          <strong>条件一致度 {matchPercent(totalScore, maxScore)}%</strong>
         </div>
       </div>
+
+      {top && <p className="score-note">回答条件をスコア化した目安です。</p>}
 
       <div className="spec-chips">
         {specItems.map((item) => (
@@ -61,16 +72,35 @@ export function ProductCard({ candidate, rank, maxScore, scoreLabels, expanded, 
             {item.value}
           </span>
         ))}
-        <span className="price" title="実売最安値">
-          {formatPrice(effectivePriceYen(candidate))}
+        <span className="price" title={price.label}>
+          {formatPrice(price)}
         </span>
       </div>
 
       <ul className="reasons">
-        {reasons.map((r) => (
+        {reasons.slice(0, top ? 3 : 2).map((r) => (
           <li key={r.code}>{r.text}</li>
         ))}
       </ul>
+
+      <div className="purchase-cta" aria-label="購入先">
+        {primaryOffer ? (
+          <a
+            className="btn-primary"
+            href={`/go/${encodeURIComponent(primaryOffer.providerKey)}/${encodeURIComponent(primaryOffer.providerItemId)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            {primaryOffer.providerKey}で購入先を確認
+            {primaryOffer.priceMinor !== null
+              ? `（¥${(primaryOffer.priceMinor / 100).toLocaleString("ja-JP")}〜）`
+              : ""}{" "}
+            ↗
+          </a>
+        ) : (
+          <span className="purchase-unavailable">購入先情報なし</span>
+        )}
+      </div>
 
       <button
         className="btn-ghost toggle"
@@ -79,7 +109,7 @@ export function ProductCard({ candidate, rank, maxScore, scoreLabels, expanded, 
         aria-expanded={expanded}
         aria-controls={detailId}
       >
-        {expanded ? "詳しく閉じる" : "詳しく見る"}
+        {expanded ? "詳しく閉じる" : "詳しく見る（出典・内訳）"}
       </button>
 
       {expanded && (
@@ -116,13 +146,11 @@ export function ProductCard({ candidate, rank, maxScore, scoreLabels, expanded, 
                 {candidate.offers.map((o) => (
                   <li key={o.providerItemId}>
                     <a
-                      href={`/go/${encodeURIComponent(o.providerKey)}/${encodeURIComponent(
-                        o.providerItemId
-                      )}`}
+                      href={`/go/${encodeURIComponent(o.providerKey)}/${encodeURIComponent(o.providerItemId)}`}
                       target="_blank"
                       rel="noopener noreferrer"
                     >
-                      購入先を開く ↗
+                      {o.providerKey}の購入先を開く ↗
                     </a>
                   </li>
                 ))}
