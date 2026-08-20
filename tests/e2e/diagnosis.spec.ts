@@ -35,7 +35,7 @@ test.describe("炊飯器選び診断", () => {
     await page.getByRole("button", { name: /^IH炊飯器/ }).click();
     expect((await previewResponse).ok()).toBe(true);
 
-    await expect(page.getByRole("heading", { name: "予算はどのくらいですか?" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "予算の目安は?" })).toBeVisible();
     const liveCandidates = page.locator(".live-candidates");
     await expect(liveCandidates.getByText("回答途中の候補")).toBeVisible();
     await expect(liveCandidates.locator(".live-candidate").first()).toBeVisible();
