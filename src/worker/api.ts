@@ -90,7 +90,10 @@ export async function handleConfig(request: Request): Promise<Response> {
   const url = new URL(request.url);
   const requested = url.searchParams.get("category") ?? undefined;
   const keys = listModules();
-  const key = requested && keys.includes(requested) ? requested : keys[0];
+  if (requested && !keys.includes(requested)) {
+    return json({ error: "unsupported_category", categoryKey: requested }, { status: 404 });
+  }
+  const key = requested ?? keys[0];
   if (!key) {
     return json({ error: "no_categories_registered" }, { status: 500 });
   }
