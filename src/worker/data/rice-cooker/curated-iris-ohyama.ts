@@ -8,6 +8,7 @@ import type { CuratedRiceCookerRecord } from "./curated-types";
 export const CURATED_IRIS_OHYAMA: CuratedRiceCookerRecord[] = [
   {
     productId: "iris-rc-msa50",
+    imageUrl: "https://www.irisohyama.co.jp/ricecooker/rc-msa/images/fb.jpg",
     manufacturer: "IRIS OHYAMA",
     model: "RC-MSA50",
     displayName: "マイコンジャー炊飯器 RC-MSA50",
@@ -28,6 +29,7 @@ export const CURATED_IRIS_OHYAMA: CuratedRiceCookerRecord[] = [
   },
   {
     productId: "iris-rc-ila50",
+    imageUrl: "https://www.irisohyama.co.jp/ricecooker/rc-ila50/images/fb.jpg",
     manufacturer: "IRIS OHYAMA",
     model: "RC-ILA50",
     displayName: "IHジャー炊飯器 5.5合 RC-ILA50",

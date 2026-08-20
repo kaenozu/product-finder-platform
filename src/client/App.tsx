@@ -16,7 +16,11 @@ function firstQuestionKey(config: ConfigResponse | null): string | null {
   return [...config.questions].sort((a, b) => a.order - b.order)[0]?.key ?? null;
 }
 
-export default function App() {
+interface AppProps {
+  categoryKey: string;
+}
+
+export default function App({ categoryKey }: AppProps) {
   const [config, setConfig] = useState<ConfigResponse | null>(null);
   const [screen, setScreen] = useState<Screen>("loading");
   const [answers, setAnswers] = useState<Record<string, string>>({});
@@ -28,7 +32,7 @@ export default function App() {
   const previewRequestId = useRef(0);
 
   useEffect(() => {
-    fetchConfig()
+    fetchConfig(categoryKey)
       .then((c) => {
         document.title = `${c.copy.appTitle} — ${c.copy.heroTitle}`;
         const meta = document.querySelector('meta[name="description"]');
@@ -36,10 +40,16 @@ export default function App() {
         setConfig(c);
         setScreen("start");
       })
-      .catch((e: unknown) =>
-        setError(e instanceof Error ? e.message : "設定の読み込みに失敗しました")
-      );
-  }, []);
+      .catch((e: unknown) => {
+        const message = e instanceof Error ? e.message : "設定の読み込みに失敗しました";
+        // 未知カテゴリ（URL直打ちなど）はポータルへ案内
+        if (message.includes("unsupported_category") || message === "no_categories_registered") {
+          window.location.replace("/");
+          return;
+        }
+        setError(message);
+      });
+  }, [categoryKey]);
 
   function invalidatePreview() {
     previewRequestId.current += 1;
@@ -177,7 +187,11 @@ export default function App() {
     <main>
       <header className="app-header">
         <span className="logo">
-          <img className="logo-mark" src="/favicon.svg" alt="" width="20" height="20" />
+          <a href="/" className="logo-brand" aria-label="pitariko トップへ">
+            <img className="logo-mark" src="/favicon.svg" alt="" width="20" height="20" />
+            pitariko
+          </a>
+          <span className="logo-sep">/</span>
           {config?.copy.appTitle}
         </span>
         {screen === "questions" && result && (

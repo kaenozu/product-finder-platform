@@ -22,6 +22,7 @@ function toRiceCookerProduct(
     model: record.model,
     displayName: record.displayName,
     specs: {
+      imageUrl: record.imageUrl,
       capacityGou: record.capacityGou,
       heatingMethod: record.heatingMethod,
       powerW: record.powerW,

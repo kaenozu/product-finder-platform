@@ -107,7 +107,10 @@ export interface CategoryModule<C, P extends CatalogProduct> {
   canShowPartialResult(answers: AnswerRecord, criteria: C): boolean;
   hardMatch(product: P, criteria: C): HardMatchResult;
   score(product: P, criteria: C, offers?: ProductOffer[]): ScoreResult;
+  /** おすすめ理由（positive。スコア・条件に基づく） */
   explain(product: P, criteria: C, offers?: ProductOffer[]): RecommendationReason[];
+  /** 惜しい点（negative。条件から外れる点を正直に提示） */
+  weakPoints?(product: P, criteria: C, offers?: ProductOffer[]): RecommendationReason[];
   /** 未回答のうち、criteria導出に影響する質問キー */
   unansweredImportantKeys(answers: AnswerRecord): string[];
   /** 回答内容とカタログ全体に基づく追加の警告（例: 指定した機能を満たす商品が存在しない） */

@@ -8,6 +8,7 @@ import type { CuratedRiceCookerRecord } from "./curated-types";
 export const CURATED_ZOJIRUSHI_GROUP: CuratedRiceCookerRecord[] = [
   {
     productId: "zojirushi-nw-wd10",
+    imageUrl: "https://www.zojirushi.co.jp/syohin/rice/ricecooker/nw-wd/img/kv.jpg",
     manufacturer: "Zojirushi",
     model: "NW-WD10",
     displayName: "豪熱大火力 NW-WD10",
@@ -30,6 +31,7 @@ export const CURATED_ZOJIRUSHI_GROUP: CuratedRiceCookerRecord[] = [
   },
   {
     productId: "zojirushi-nw-vk10",
+    imageUrl: "https://www.zojirushi.co.jp/syohin/assets/cms/materials/ogp_nw-vk.png",
     manufacturer: "Zojirushi",
     model: "NW-VK10",
     displayName: "極め炊き NW-VK10",
@@ -52,6 +54,8 @@ export const CURATED_ZOJIRUSHI_GROUP: CuratedRiceCookerRecord[] = [
   },
   {
     productId: "zojirushi-nl-dt10",
+    imageUrl:
+      "https://www.zojirushi.co.jp/syohin/assets/cms/materials/0a268c51e4ecdb0cdf93ae5fb194eb91dc474ba2.png",
     manufacturer: "Zojirushi",
     model: "NL-DT10",
     displayName: "極め炊き NL-DT10",
@@ -74,6 +78,8 @@ export const CURATED_ZOJIRUSHI_GROUP: CuratedRiceCookerRecord[] = [
   },
   {
     productId: "zojirushi-np-ru05",
+    imageUrl:
+      "https://www.zojirushi.co.jp/syohin/assets/cms/materials/2b93164abb12e267a2fbb419fdc5e4c95461823b.png",
     manufacturer: "Zojirushi",
     model: "NP-RU05",
     displayName: "極め炊き NP-RU05",
@@ -96,6 +102,7 @@ export const CURATED_ZOJIRUSHI_GROUP: CuratedRiceCookerRecord[] = [
   },
   {
     productId: "zojirushi-nw-nb10",
+    imageUrl: "https://www.zojirushi.co.jp/syohin/rice/ricecooker/nw-nb/images/ogp_nwnb.jpg",
     manufacturer: "Zojirushi",
     model: "NW-NB10",
     displayName: "炎舞炊き NW-NB10",
@@ -122,6 +129,8 @@ export const CURATED_ZOJIRUSHI_GROUP: CuratedRiceCookerRecord[] = [
   },
   {
     productId: "zojirushi-ns-nh05",
+    imageUrl:
+      "https://www.zojirushi.co.jp/syohin/assets/cms/materials/2ccc01d5b2a90ccc5541777d655cdbc5b21fe592.png",
     manufacturer: "Zojirushi",
     model: "NS-NH05",
     displayName: "極め炊き NS-NH05",

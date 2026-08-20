@@ -82,4 +82,16 @@ describe("worker routing and request boundaries", () => {
 
     expect(response.status).toBe(403);
   });
+
+  it("/api/categories が登録済みカテゴリの一覧を返す", async () => {
+    const response = await worker.fetch(new Request("http://localhost/api/categories"), workerEnv);
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      categories: Array<{ categoryKey: string; copy: { appTitle: string } }>;
+    };
+    expect(body.categories.length).toBeGreaterThan(0);
+    expect(body.categories.some((c) => c.categoryKey === "rice-cooker")).toBe(true);
+    expect(body.categories[0]!.copy.appTitle).toBeTruthy();
+  });
 });

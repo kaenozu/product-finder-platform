@@ -19,6 +19,8 @@ export const FEATURE_TAGS = [
 export type FeatureTag = (typeof FEATURE_TAGS)[number];
 
 export type RiceCookerSpecs = {
+  /** 公式商品画像URL（未確認は null/省略） */
+  imageUrl?: string | null;
   /** 炊飯容量（合） */
   capacityGou: number;
   heatingMethod: HeatingMethod;

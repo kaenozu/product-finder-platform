@@ -8,6 +8,8 @@ import type { CuratedRiceCookerRecord } from "./curated-types";
 export const CURATED_TIGER_MITSUBISHI: CuratedRiceCookerRecord[] = [
   {
     productId: "tiger-jrt-a100",
+    imageUrl:
+      "https://www.tiger-corporation.com/wp-content/uploads/2026/05/jrt-a100-ic-daa086f4950deab1634be93c90524cca.jpg",
     manufacturer: "Tiger",
     model: "JRT-A100",
     displayName: "土鍋ご泡火炊き JRT-A100",
@@ -41,6 +43,8 @@ export const CURATED_TIGER_MITSUBISHI: CuratedRiceCookerRecord[] = [
   },
   {
     productId: "tiger-jrx-s060",
+    imageUrl:
+      "https://www.tiger-corporation.com/wp-content/uploads/2025/05/jrx-s-060-specs-new.webp",
     manufacturer: "Tiger",
     model: "JRX-S060",
     displayName: "土鍋ご泡火炊き JRX-S060",
@@ -74,6 +78,8 @@ export const CURATED_TIGER_MITSUBISHI: CuratedRiceCookerRecord[] = [
   },
   {
     productId: "tiger-jrl-a100",
+    imageUrl:
+      "https://www.tiger-corporation.com/wp-content/uploads/2026/06/jrl-a-spec-210a99f2f3f702cca2141cd103d0de82.jpg",
     manufacturer: "Tiger",
     model: "JRL-A100",
     displayName: "土鍋ご泡火炊き JRL-A100",
@@ -103,6 +109,7 @@ export const CURATED_TIGER_MITSUBISHI: CuratedRiceCookerRecord[] = [
   },
   {
     productId: "tiger-jpv-m100",
+    imageUrl: "https://www.tiger-corporation.com/wp-content/uploads/2026/07/jpv-m-th.webp",
     manufacturer: "Tiger",
     model: "JPV-M100",
     displayName: "圧力IHジャー炊飯器 JPV-M100",
@@ -136,6 +143,8 @@ export const CURATED_TIGER_MITSUBISHI: CuratedRiceCookerRecord[] = [
   },
   {
     productId: "tiger-jri-s100",
+    imageUrl:
+      "https://www.tiger-corporation.com/wp-content/uploads/2026/06/jri-s100-spec-0af037d2d80da9bc1c50581472713544.jpg",
     manufacturer: "Tiger",
     model: "JRI-S100",
     displayName: "ご泡火炊き JRI-S100",
@@ -161,6 +170,8 @@ export const CURATED_TIGER_MITSUBISHI: CuratedRiceCookerRecord[] = [
   },
   {
     productId: "tiger-jri-c060",
+    imageUrl:
+      "https://www.tiger-corporation.com/wp-content/uploads/2025/06/JRI-C060_spec-6d148d932e27c4fbefb52ab93e72bbee.png",
     manufacturer: "Tiger",
     model: "JRI-C060",
     displayName: "ご泡火炊き JRI-C060",
@@ -186,6 +197,7 @@ export const CURATED_TIGER_MITSUBISHI: CuratedRiceCookerRecord[] = [
   },
   {
     productId: "mitsubishi-nj-bw10j",
+    imageUrl: "https://www.mitsubishielectric.co.jp/home/suihanki/img/img_pro_nj_bw10j.jpg",
     manufacturer: "Mitsubishi Electric",
     model: "NJ-BW10J",
     displayName: "本炭釜 紬 NJ-BW10J",
@@ -215,6 +227,7 @@ export const CURATED_TIGER_MITSUBISHI: CuratedRiceCookerRecord[] = [
   },
   {
     productId: "mitsubishi-nj-vw10j",
+    imageUrl: "https://www.mitsubishielectric.co.jp/home/suihanki/img/img_pro_nj_vw10j.jpg",
     manufacturer: "Mitsubishi Electric",
     model: "NJ-VW10J",
     displayName: "本炭釜 NJ-VW10J",
@@ -244,6 +257,7 @@ export const CURATED_TIGER_MITSUBISHI: CuratedRiceCookerRecord[] = [
   },
   {
     productId: "mitsubishi-nj-vp10j",
+    imageUrl: "https://www.mitsubishielectric.co.jp/home/suihanki/img/img_pro_nj_vp10j.jpg",
     manufacturer: "Mitsubishi Electric",
     model: "NJ-VP10J",
     displayName: "炭炊釜 NJ-VP10J",
@@ -273,6 +287,7 @@ export const CURATED_TIGER_MITSUBISHI: CuratedRiceCookerRecord[] = [
   },
   {
     productId: "mitsubishi-nj-vl18j",
+    imageUrl: "https://www.mitsubishielectric.co.jp/home/suihanki/img/img_pro_nj_vl18j.jpg",
     manufacturer: "Mitsubishi Electric",
     model: "NJ-VL18J",
     displayName: "炭炊釜 NJ-VL18J",
@@ -302,6 +317,7 @@ export const CURATED_TIGER_MITSUBISHI: CuratedRiceCookerRecord[] = [
   },
   {
     productId: "mitsubishi-nj-vs10j",
+    imageUrl: "https://www.mitsubishielectric.co.jp/home/suihanki/img/img_pro_nj_vs10j.jpg",
     manufacturer: "Mitsubishi Electric",
     model: "NJ-VS10J",
     displayName: "炭炊釜 NJ-VS10J",
@@ -331,6 +347,7 @@ export const CURATED_TIGER_MITSUBISHI: CuratedRiceCookerRecord[] = [
   },
   {
     productId: "mitsubishi-nj-se06h",
+    imageUrl: "https://www.mitsubishielectric.co.jp/home/suihanki/img/img_pro_nj_se06h.jpg",
     manufacturer: "Mitsubishi Electric",
     model: "NJ-SE06H",
     displayName: "炭炊釜 NJ-SE06H",

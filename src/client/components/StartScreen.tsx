@@ -1,4 +1,5 @@
 import type { CategoryCopy } from "../../shared/domain/types";
+import { AffiliateNote } from "./AffiliateNote";
 
 interface Props {
   copy: CategoryCopy;
@@ -23,6 +24,7 @@ export function StartScreen({ copy, onStart }: Props) {
         診断をはじめる
       </button>
       <p className="note">{copy.note}</p>
+      <AffiliateNote />
     </div>
   );
 }

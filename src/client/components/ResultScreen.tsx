@@ -1,6 +1,7 @@
 import type { EvaluateResponse } from "../lib/api";
 import type { CategoryCopy } from "../../shared/domain/types";
 import { ProductCard } from "./ProductCard";
+import { AffiliateNote } from "./AffiliateNote";
 import { useEffect, useRef, useState } from "react";
 
 interface Props {
@@ -82,6 +83,8 @@ export function ResultScreen({ result, copy, onRestart, onEditAnswers }: Props) 
           最初からやり直す
         </button>
       </div>
+
+      <AffiliateNote />
     </section>
   );
 }

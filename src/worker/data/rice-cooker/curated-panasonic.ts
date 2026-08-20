@@ -9,6 +9,7 @@ export const CURATED_PANASONIC_HITACHI: CuratedRiceCookerRecord[] = [
   // ===== Panasonic =====
   {
     productId: "panasonic-sr-x910e",
+    imageUrl: "https://panasonicjp.scene7.com/is/image/panasonicjp/SR-X910E-K_5_5?fmt=png-alpha",
     manufacturer: "Panasonic",
     model: "SR-X910E",
     displayName: "可変圧力IHジャー炊飯器 SR-X910E",
@@ -32,6 +33,7 @@ export const CURATED_PANASONIC_HITACHI: CuratedRiceCookerRecord[] = [
   },
   {
     productId: "panasonic-sr-x918e",
+    imageUrl: "https://panasonicjp.scene7.com/is/image/panasonicjp/SR-X918E-K_1?fmt=png-alpha",
     manufacturer: "Panasonic",
     model: "SR-X918E",
     displayName: "可変圧力IHジャー炊飯器 SR-X918E",
@@ -55,6 +57,7 @@ export const CURATED_PANASONIC_HITACHI: CuratedRiceCookerRecord[] = [
   },
   {
     productId: "panasonic-sr-x710e",
+    imageUrl: "https://panasonicjp.scene7.com/is/image/panasonicjp/SR-X710E-K_5_5?fmt=png-alpha",
     manufacturer: "Panasonic",
     model: "SR-X710E",
     displayName: "可変圧力IHジャー炊飯器 SR-X710E",
@@ -78,6 +81,7 @@ export const CURATED_PANASONIC_HITACHI: CuratedRiceCookerRecord[] = [
   },
   {
     productId: "panasonic-sr-n610e",
+    imageUrl: "https://panasonicjp.scene7.com/is/image/panasonicjp/SR-N610E-K_5_5?fmt=png-alpha",
     manufacturer: "Panasonic",
     model: "SR-N610E",
     displayName: "可変圧力IHジャー炊飯器 SR-N610E",
@@ -101,6 +105,7 @@ export const CURATED_PANASONIC_HITACHI: CuratedRiceCookerRecord[] = [
   },
   {
     productId: "panasonic-sr-n510e",
+    imageUrl: "https://panasonicjp.scene7.com/is/image/panasonicjp/SR-N510E-K_5_5?fmt=png-alpha",
     manufacturer: "Panasonic",
     model: "SR-N510E",
     displayName: "可変圧力IHジャー炊飯器 SR-N510E",
@@ -124,6 +129,7 @@ export const CURATED_PANASONIC_HITACHI: CuratedRiceCookerRecord[] = [
   },
   {
     productId: "panasonic-sr-n518e",
+    imageUrl: "https://panasonicjp.scene7.com/is/image/panasonicjp/SR-N518E-K_1?fmt=png-alpha",
     manufacturer: "Panasonic",
     model: "SR-N518E",
     displayName: "可変圧力IHジャー炊飯器 SR-N518E",
@@ -147,6 +153,7 @@ export const CURATED_PANASONIC_HITACHI: CuratedRiceCookerRecord[] = [
   },
   {
     productId: "panasonic-sr-n310e",
+    imageUrl: "https://panasonicjp.scene7.com/is/image/panasonicjp/SR-N310E-K_5_5?fmt=png-alpha",
     manufacturer: "Panasonic",
     model: "SR-N310E",
     displayName: "可変圧力IHジャー炊飯器 SR-N310E",
@@ -170,6 +177,7 @@ export const CURATED_PANASONIC_HITACHI: CuratedRiceCookerRecord[] = [
   },
   {
     productId: "panasonic-sr-n210e",
+    imageUrl: "https://panasonicjp.scene7.com/is/image/panasonicjp/SR-N210E-K_5_5?fmt=png-alpha",
     manufacturer: "Panasonic",
     model: "SR-N210E",
     displayName: "IHジャー炊飯器 SR-N210E",
@@ -193,6 +201,7 @@ export const CURATED_PANASONIC_HITACHI: CuratedRiceCookerRecord[] = [
   },
   {
     productId: "panasonic-sr-c306e",
+    imageUrl: "https://panasonicjp.scene7.com/is/image/panasonicjp/SR-C306E-K_3_5?fmt=png-alpha",
     manufacturer: "Panasonic",
     model: "SR-C306E",
     displayName: "可変圧力IHジャー炊飯器 SR-C306E",
@@ -216,6 +225,7 @@ export const CURATED_PANASONIC_HITACHI: CuratedRiceCookerRecord[] = [
   },
   {
     productId: "panasonic-sr-c206e",
+    imageUrl: "https://panasonicjp.scene7.com/is/image/panasonicjp/SR-C206E-W_3_5?fmt=png-alpha",
     manufacturer: "Panasonic",
     model: "SR-C206E",
     displayName: "IHジャー炊飯器 SR-C206E",
@@ -241,6 +251,7 @@ export const CURATED_PANASONIC_HITACHI: CuratedRiceCookerRecord[] = [
   // ===== Hitachi =====
   {
     productId: "hitachi-rz-w100jm",
+    imageUrl: "https://kadenfan.hitachi.co.jp/kitchen/lineup/rz-w100jm/img/img_main_pc.webp",
     manufacturer: "Hitachi",
     model: "RZ-W100JM",
     displayName: "ふっくら御膳 RZ-W100JM",
@@ -268,6 +279,7 @@ export const CURATED_PANASONIC_HITACHI: CuratedRiceCookerRecord[] = [
   },
   {
     productId: "hitachi-rz-z100jm",
+    imageUrl: "https://kadenfan.hitachi.co.jp/kitchen/lineup/rz-z100jm/img/img_spec01_pc.webp",
     manufacturer: "Hitachi",
     model: "RZ-Z100JM",
     displayName: "ふっくら御膳 RZ-Z100JM",
@@ -295,6 +307,7 @@ export const CURATED_PANASONIC_HITACHI: CuratedRiceCookerRecord[] = [
   },
   {
     productId: "hitachi-rz-v100km",
+    imageUrl: "https://kadenfan.hitachi.co.jp/kitchen/lineup/rzv100km/img/img_main.webp",
     manufacturer: "Hitachi",
     model: "RZ-V100KM",
     displayName: "ふっくら御膳 RZ-V100KM",
@@ -325,6 +338,7 @@ export const CURATED_PANASONIC_HITACHI: CuratedRiceCookerRecord[] = [
   },
   {
     productId: "hitachi-rz-y100hj",
+    imageUrl: "https://kadenfan.hitachi.co.jp/kitchen/lineup/rzy100hj/img/img_model.png",
     manufacturer: "Hitachi",
     model: "RZ-Y100HJ",
     displayName: "RZ-Y100HJ",

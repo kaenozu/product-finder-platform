@@ -1,6 +1,6 @@
 import { corsHeaders, json } from "./http";
 import type { Env } from "./env";
-import { handleConfig, handleEvaluate, handleProductDetail } from "./api";
+import { handleCategories, handleConfig, handleEvaluate, handleProductDetail } from "./api";
 import { handleRedirect } from "./redirect";
 import { handleDevSeed } from "./dev-seed";
 
@@ -70,6 +70,9 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
     }
     if (pathname === "/api/config" || pathname === "/api/config/") {
       return handleConfig(request);
+    }
+    if (pathname === "/api/categories" || pathname === "/api/categories/") {
+      return handleCategories();
     }
     if (pathname === "/api/diagnosis/evaluate" || pathname === "/api/diagnosis/evaluate/") {
       if (request.method !== "POST") {

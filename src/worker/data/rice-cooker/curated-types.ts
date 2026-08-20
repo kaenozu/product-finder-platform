@@ -13,6 +13,8 @@ export interface CuratedSourceRef {
  */
 export interface CuratedRiceCookerRecord {
   productId: string;
+  /** 公式商品画像URL（https）。未確認は null */
+  imageUrl: string | null;
   manufacturer: string;
   model: string;
   displayName: string;

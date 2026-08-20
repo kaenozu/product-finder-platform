@@ -17,6 +17,7 @@ import {
   qualityGates,
   score,
   unansweredImportantKeys,
+  weakPoints,
 } from "./rice-cooker/module";
 
 export const riceCookerModule: CategoryModule<RiceCookerCriteria, RiceCookerProduct> = {
@@ -27,6 +28,7 @@ export const riceCookerModule: CategoryModule<RiceCookerCriteria, RiceCookerProd
   hardMatch,
   score,
   explain,
+  weakPoints,
   unansweredImportantKeys,
   buildWarnings,
   scoreLabels: SCORE_LABELS,

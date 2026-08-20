@@ -1,4 +1,5 @@
 import type { CandidateResponse } from "../lib/api";
+import { AFFILIATE_REL } from "./AffiliateNote";
 
 interface Props {
   candidate: CandidateResponse;
@@ -37,17 +38,44 @@ function formatPrice(info: PriceInfo): string {
     : `${info.label} ¥${info.value.toLocaleString("ja-JP")}〜`;
 }
 
+/** 購入CTAの最優先オファー: 在庫あり→最安値順。なければすべてのオファーから最安値 */
+function bestOffer(candidate: CandidateResponse) {
+  const offers = candidate.offers;
+  if (offers.length === 0) return null;
+  const inStock = offers.filter(
+    (o) => o.availability === "in_stock" || o.availability === "low_stock"
+  );
+  const pool = inStock.length > 0 ? inStock : offers;
+  const best = pool.reduce((min: (typeof pool)[number] | null, o) => {
+    if (min === null) return o;
+    const a = o.priceMinor ?? Number.POSITIVE_INFINITY;
+    const b = min.priceMinor ?? Number.POSITIVE_INFINITY;
+    return a < b ? o : min;
+  }, null);
+  return best;
+}
+
+function formatDate(value: string | undefined | null): string | null {
+  if (!value) return null;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
+}
+
 function matchPercent(totalScore: number, maxScore: number): number {
   if (maxScore <= 0) return 0;
   return Math.round((totalScore / maxScore) * 100);
 }
 
 export function ProductCard({ candidate, rank, maxScore, scoreLabels, expanded, onToggle }: Props) {
-  const { product, sources, reasons, totalScore, scoreBreakdown, specItems } = candidate;
+  const { product, sources, reasons, weakPoints, totalScore, scoreBreakdown, specItems } =
+    candidate;
   const top = rank === 1;
   const detailId = `product-detail-${product.productId}`;
   const price = priceInfo(candidate);
-  const primaryOffer = candidate.offers[0];
+  const offer = bestOffer(candidate);
+  const checkedAt = formatDate(sources[0]?.checkedAt);
+  const updatedAt = formatDate(product.sourceUpdatedAt);
 
   return (
     <article className={`product-card ${expanded ? "expanded" : ""} ${top ? "top" : ""}`}>
@@ -66,6 +94,20 @@ export function ProductCard({ candidate, rank, maxScore, scoreLabels, expanded, 
 
       {top && <p className="score-note">回答条件をスコア化した目安です。</p>}
 
+      {product.imageUrl && (
+        <div className="product-image">
+          <img
+            src={product.imageUrl}
+            alt={product.displayName}
+            loading="lazy"
+            decoding="async"
+            onError={(e) => {
+              (e.currentTarget.parentElement as HTMLElement).hidden = true;
+            }}
+          />
+        </div>
+      )}
+
       <div className="spec-chips">
         {specItems.map((item) => (
           <span key={item.key} title={item.label}>
@@ -83,24 +125,26 @@ export function ProductCard({ candidate, rank, maxScore, scoreLabels, expanded, 
         ))}
       </ul>
 
-      <div className="purchase-cta" aria-label="購入先">
-        {primaryOffer ? (
-          <a
-            className="btn-primary"
-            href={`/go/${encodeURIComponent(primaryOffer.providerKey)}/${encodeURIComponent(primaryOffer.providerItemId)}`}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            {primaryOffer.providerKey}で購入先を確認
-            {primaryOffer.priceMinor !== null
-              ? `（¥${(primaryOffer.priceMinor / 100).toLocaleString("ja-JP")}〜）`
-              : ""}{" "}
-            ↗
-          </a>
-        ) : (
-          <span className="purchase-unavailable">購入先情報なし</span>
-        )}
-      </div>
+      {weakPoints.length > 0 && (
+        <ul className="weak-points">
+          {weakPoints.map((w) => (
+            <li key={w.code}>{w.text}</li>
+          ))}
+        </ul>
+      )}
+
+      {offer ? (
+        <a
+          className="btn-cta"
+          href={`/go/${encodeURIComponent(offer.providerKey)}/${encodeURIComponent(offer.providerItemId)}`}
+          target="_blank"
+          rel={AFFILIATE_REL}
+        >
+          購入する{price.value !== null ? `（${formatPrice(price)}）` : ""}
+        </a>
+      ) : (
+        <span className="purchase-unavailable">購入先情報なし</span>
+      )}
 
       <button
         className="btn-ghost toggle"
@@ -127,9 +171,12 @@ export function ProductCard({ candidate, rank, maxScore, scoreLabels, expanded, 
                 </li>
               ))}
           </ul>
-          <h4>
-            出典（公式サイト・{new Date(sources[0]?.checkedAt ?? "").getFullYear() || ""}年確認）
-          </h4>
+          <h4>データの確認日・更新日</h4>
+          <ul className="sources">
+            {checkedAt && <li>公式スペック確認日: {checkedAt}</li>}
+            {updatedAt && <li>データ更新日: {updatedAt}</li>}
+          </ul>
+          <h4>出典（公式サイト・{checkedAt ?? ""}確認）</h4>
           <ul className="sources">
             {sources.map((s) => (
               <li key={s.url}>
@@ -148,7 +195,7 @@ export function ProductCard({ candidate, rank, maxScore, scoreLabels, expanded, 
                     <a
                       href={`/go/${encodeURIComponent(o.providerKey)}/${encodeURIComponent(o.providerItemId)}`}
                       target="_blank"
-                      rel="noopener noreferrer"
+                      rel={AFFILIATE_REL}
                     >
                       {o.providerKey}の購入先を開く ↗
                     </a>

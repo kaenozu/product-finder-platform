@@ -23,13 +23,31 @@ export interface CandidateResponse {
     specs: Record<string, unknown>;
     referencePriceYen: number | null;
     availability: string;
+    sourceUpdatedAt: string;
+    ingestedAt: string;
+    imageUrl: string | null;
   };
   sources: Array<{ url: string; checkedAt: string }>;
   offers: ProductOffer[];
   reasons: Array<{ code: string; text: string }>;
+  weakPoints: Array<{ code: string; text: string }>;
   scoreBreakdown: Record<string, number>;
   totalScore: number;
   specItems: SpecDisplayItem[];
+}
+
+export interface CategorySummary {
+  categoryKey: string;
+  copy: {
+    appTitle: string;
+    heroTitle: string;
+    heroLead: string;
+    resultTitle: string;
+  };
+}
+
+export interface CategoriesResponse {
+  categories: CategorySummary[];
 }
 
 export interface EvaluateResponse {
@@ -71,8 +89,13 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   return (await res.json()) as T;
 }
 
-export function fetchConfig(): Promise<ConfigResponse> {
-  return request<ConfigResponse>("/api/config");
+export function fetchConfig(categoryKey?: string): Promise<ConfigResponse> {
+  const query = categoryKey ? `?category=${encodeURIComponent(categoryKey)}` : "";
+  return request<ConfigResponse>(`/api/config${query}`);
+}
+
+export function fetchCategories(): Promise<CategoriesResponse> {
+  return request<CategoriesResponse>("/api/categories");
 }
 
 export function postEvaluate(

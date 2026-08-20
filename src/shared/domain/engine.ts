@@ -14,6 +14,7 @@ export interface Candidate<P extends CatalogProduct> {
   product: P;
   offers: ProductOffer[];
   reasons: RecommendationReason[];
+  weakPoints: RecommendationReason[];
   scoreBreakdown: Record<string, number>;
   totalScore: number;
 }
@@ -88,17 +89,21 @@ export function recommend<C, P extends CatalogProduct>(
   const scored = hardPassed.map((product) => {
     const score = module.score(product, criteria, offersByProduct.get(product.productId));
     const reasons = module.explain(product, criteria, offersByProduct.get(product.productId));
-    return { product, score, reasons };
+    const weakPoints = module.weakPoints
+      ? module.weakPoints(product, criteria, offersByProduct.get(product.productId))
+      : [];
+    return { product, score, reasons, weakPoints };
   });
 
   scored.sort((a, b) => b.score.score - a.score.score || compareStable(a.product, b.product));
 
   const candidates: Candidate<P>[] = scored
     .slice(0, MAX_CANDIDATES)
-    .map(({ product, score, reasons }) => ({
+    .map(({ product, score, reasons, weakPoints }) => ({
       product,
       offers: offersByProduct.get(product.productId) ?? [],
       reasons,
+      weakPoints,
       scoreBreakdown: score.breakdown,
       totalScore: score.score,
     }));

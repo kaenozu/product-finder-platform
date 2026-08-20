@@ -9,6 +9,7 @@ import {
   score,
   explain,
   unansweredImportantKeys,
+  weakPoints,
 } from "../../src/shared/domain/rice-cooker/module";
 import type { RiceCookerProduct, RiceCookerSpecs } from "../../src/shared/domain/rice-cooker/types";
 import { ManualRiceCookerAdapter } from "../../src/worker/adapters/manual";
@@ -347,6 +348,92 @@ describe("explain", () => {
     });
     const reasons = explain(p, deriveCriteria({ ...FULL_ANSWERS, priority: "keepwarm" }));
     expect(reasons.some((r) => r.code === "keepwarm_long")).toBe(true);
+  });
+});
+
+describe("weakPoints（惜しい点）", () => {
+  const p = makeProduct({
+    productId: "wp1",
+    specs: {
+      capacityGou: 10,
+      heatingMethod: "micom",
+      powerW: null,
+      weightKg: 6,
+      widthMm: 280,
+      depthMm: 300,
+      heightMm: 220,
+      keepWarmHours: 4,
+      innerPot: null,
+      features: [],
+      releaseYear: 2021,
+    },
+  });
+
+  it("容量過剰・加熱不一致・古いモデルを惜しい点として返す", () => {
+    const points = weakPoints(p, deriveCriteria(FULL_ANSWERS));
+    expect(points.some((w) => w.code === "capacity_large")).toBe(true);
+    expect(points.some((w) => w.code === "heating_mismatch")).toBe(true);
+    expect(points.some((w) => w.code === "old_model")).toBe(true);
+  });
+
+  it("コンパクト優先+幅広・手入れ優先+重量で惜しい点が出る", () => {
+    const compact = weakPoints(p, deriveCriteria({ cookVolume: "3", priority: "compact" }));
+    expect(compact.some((w) => w.code === "wide")).toBe(true);
+    const ease = weakPoints(p, deriveCriteria({ cookVolume: "3", priority: "ease" }));
+    expect(ease.some((w) => w.code === "heavy")).toBe(true);
+  });
+
+  it("保温優先+保温短いで惜しい点が出る", () => {
+    const points = weakPoints(p, deriveCriteria({ cookVolume: "3", priority: "keepwarm" }));
+    expect(points.some((w) => w.code === "keepwarm_short")).toBe(true);
+  });
+
+  it("条件に合う商品では惜しい点が空（または条件外のみ）", () => {
+    const good = makeProduct({
+      productId: "wp2",
+      specs: {
+        capacityGou: 5.5,
+        heatingMethod: "pressure_ih",
+        powerW: null,
+        weightKg: 3,
+        widthMm: 240,
+        depthMm: 300,
+        heightMm: 220,
+        keepWarmHours: 24,
+        innerPot: null,
+        features: ["tacook"],
+        releaseYear: 2026,
+      },
+    });
+    const points = weakPoints(good, deriveCriteria(FULL_ANSWERS));
+    expect(points).toEqual([]);
+  });
+
+  it("エンジンのcandidateにweakPointsが載る", async () => {
+    const fetched = await adapter.fetch();
+    const { products } = await adapter.normalize(fetched, ctxCtor());
+    const relaxed = recommend(
+      riceCookerModule,
+      { cookVolume: "5.5", heating: "ih", priority: "compact" },
+      asRiceCookerProducts(products),
+      new Map()
+    );
+    expect(relaxed.candidates.length).toBeGreaterThan(0);
+    for (const c of relaxed.candidates) {
+      expect(Array.isArray(c.weakPoints)).toBe(true);
+    }
+  });
+
+  it("imageUrlがspecs経由で商品に反映される", async () => {
+    const fetched = await adapter.fetch();
+    const { products } = await adapter.normalize(fetched, ctxCtor());
+    const riceProducts = asRiceCookerProducts(products);
+    expect(riceProducts.length).toBeGreaterThan(0);
+    const withImage = riceProducts.filter((p) => p.specs.imageUrl);
+    expect(withImage.length).toBe(riceProducts.length);
+    for (const p of withImage) {
+      expect(p.specs.imageUrl).toMatch(/^https:\/\//);
+    }
   });
 });
 

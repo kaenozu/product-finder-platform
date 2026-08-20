@@ -8,6 +8,7 @@ import type { CuratedRiceCookerRecord } from "./curated-types";
 export const CURATED_YAMAZEN: CuratedRiceCookerRecord[] = [
   {
     productId: "yamazen-yjn-e101",
+    imageUrl: "https://book.yamazen.co.jp/photo/item/I00005709/1200/1200/max",
     manufacturer: "Yamazen",
     model: "YJN-E101",
     displayName: "IH炊飯器（5.5合炊き）",
@@ -30,6 +31,7 @@ export const CURATED_YAMAZEN: CuratedRiceCookerRecord[] = [
   },
   {
     productId: "yamazen-yjs-cm102",
+    imageUrl: "https://book.yamazen.co.jp/photo/item/I00009142/1200/1200/max",
     manufacturer: "Yamazen",
     model: "YJS-CM102",
     displayName: "キューブ型マイコンジャー炊飯器（5.5合炊き）",
@@ -53,6 +55,7 @@ export const CURATED_YAMAZEN: CuratedRiceCookerRecord[] = [
   },
   {
     productId: "yamazen-yjp-dm102",
+    imageUrl: "https://book.yamazen.co.jp/photo/item/I00008817/1200/1200/max",
     manufacturer: "Yamazen",
     model: "YJP-DM102",
     displayName: "マイコン式炊飯器（5.5合炊き）",

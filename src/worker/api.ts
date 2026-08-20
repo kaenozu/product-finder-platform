@@ -61,9 +61,29 @@ function splitSources(product: CatalogProduct) {
       specs,
       referencePriceYen: product.referencePriceYen,
       availability: product.availability,
+      sourceUpdatedAt: product.sourceUpdatedAt,
+      ingestedAt: product.ingestedAt,
+      imageUrl: specs.imageUrl ?? null,
     },
     sources: _sources ?? [],
   };
+}
+
+/** カテゴリ一覧（pitariko ポータル表示用） */
+export async function handleCategories(): Promise<Response> {
+  const categories = listModules().map((key) => {
+    const module = getModule(key);
+    return {
+      categoryKey: key,
+      copy: {
+        appTitle: module.copy.appTitle,
+        heroTitle: module.copy.heroTitle,
+        heroLead: module.copy.heroLead,
+        resultTitle: module.copy.resultTitle,
+      },
+    };
+  });
+  return json({ categories });
 }
 
 export async function handleConfig(request: Request): Promise<Response> {
@@ -144,6 +164,7 @@ export async function handleEvaluate(env: Env, body: unknown): Promise<Response>
       ...splitSources(c.product),
       offers: c.offers,
       reasons: c.reasons,
+      weakPoints: c.weakPoints,
       scoreBreakdown: c.scoreBreakdown,
       totalScore: c.totalScore,
       specItems: module.formatSpecs(c.product),

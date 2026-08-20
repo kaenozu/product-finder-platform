@@ -437,6 +437,8 @@ describe("API handlers（D1連動）", () => {
         sources: unknown[];
         specItems: Array<{ key: string; label: string; value: string }>;
         scoreBreakdown: Record<string, number>;
+        weakPoints: Array<{ code: string; text: string }>;
+        product: { imageUrl: string | null; sourceUpdatedAt: string; ingestedAt: string };
       }>;
       noMatch: boolean;
       matchedCount: number;
@@ -459,6 +461,12 @@ describe("API handlers（D1連動）", () => {
       expect(c.specItems.length).toBeGreaterThan(0);
       expect(c.specItems[0]!.value).toMatch(/合$/);
       expect(Object.keys(c.scoreBreakdown).length).toBeGreaterThan(0);
+      // Phase 1: 惜しい点・画像URL・データ更新日がレスポンスに載る
+      expect(Array.isArray(c.weakPoints)).toBe(true);
+      expect(typeof c.product.imageUrl).toBe("string");
+      expect(c.product.imageUrl).toMatch(/^https:\/\//);
+      expect(c.product.sourceUpdatedAt).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(c.product.ingestedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     }
   });
 
@@ -530,11 +538,12 @@ describe("API handlers（D1連動）", () => {
     const res = await handleProductDetail(workerEnv, "panasonic-sr-x910e");
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
-      product: { productId: string };
+      product: { productId: string; imageUrl: string | null };
       sources: Array<{ url: string }>;
       specItems: Array<{ key: string; value: string }>;
     };
     expect(body.product.productId).toBe("panasonic-sr-x910e");
+    expect(body.product.imageUrl).toMatch(/^https:\/\//);
     expect(body.sources.length).toBeGreaterThan(0);
     expect(body.sources[0]!.url).toMatch(/^https:\/\//);
     expect(body.specItems.some((s) => s.value.endsWith("合"))).toBe(true);

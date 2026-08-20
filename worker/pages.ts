@@ -15,6 +15,13 @@ export default {
   async fetch(request: Request, env: PagesEnv): Promise<Response> {
     const response = await handleRequest(request, env);
     if (response) return response;
-    return env.ASSETS.fetch(request);
+
+    // 静的アセットを試す。存在しないパス（例: /rice-cooker などのクライアント
+    // ルーティングパス）は SPA フォールバックとして index.html を返す。
+    const assetResponse = await env.ASSETS.fetch(request);
+    if (assetResponse.status === 404) {
+      return env.ASSETS.fetch(new Request(new URL("/index.html", request.url), request));
+    }
+    return assetResponse;
   },
 } satisfies ExportedHandler<PagesEnv>;

@@ -430,6 +430,101 @@ export function explain(
   return reasons;
 }
 
+/** 惜しい点の生成（スコア/条件から外れる点を正直に提示） */
+export function weakPoints(
+  product: RiceCookerProduct,
+  criteria: RiceCookerCriteria,
+  offers?: ProductOffer[]
+): RecommendationReason[] {
+  const points: RecommendationReason[] = [];
+  const diff = product.specs.capacityGou - criteria.requiredCapacityGou;
+  const features = new Set(product.specs.features);
+
+  if (diff > 2) {
+    points.push({
+      code: "capacity_large",
+      text: `容量が${product.specs.capacityGou}合と、必要な${criteria.requiredCapacityGou}合より大きめ（${diff}合の余裕）`,
+    });
+  }
+
+  if (
+    criteria.heatingPreference !== "any" &&
+    product.specs.heatingMethod !== criteria.heatingPreference
+  ) {
+    const actual =
+      product.specs.heatingMethod === "pressure_ih"
+        ? "圧力IH"
+        : product.specs.heatingMethod === "ih"
+          ? "IH"
+          : "マイコン";
+    const wanted =
+      criteria.heatingPreference === "pressure_ih"
+        ? "圧力IH"
+        : criteria.heatingPreference === "ih"
+          ? "IH"
+          : "マイコン";
+    points.push({
+      code: "heating_mismatch",
+      text: `加熱方式が希望（${wanted}）と異なり${actual}です`,
+    });
+  }
+
+  if (criteria.priority === "functions" && criteria.useTacook && !features.has("tacook")) {
+    points.push({ code: "no_tacook", text: "希望の同時調理（おかず同時炊き）に対応していません" });
+  }
+
+  if (
+    criteria.priority === "keepwarm" &&
+    product.specs.keepWarmHours !== null &&
+    product.specs.keepWarmHours < 8
+  ) {
+    points.push({
+      code: "keepwarm_short",
+      text: `保温は${product.specs.keepWarmHours}時間と、長時間保温重視には物足りません`,
+    });
+  }
+
+  if (
+    criteria.priority === "compact" &&
+    product.specs.widthMm !== null &&
+    product.specs.widthMm > 250
+  ) {
+    points.push({
+      code: "wide",
+      text: `幅${product.specs.widthMm}mmと、コンパクト重視には大きめです`,
+    });
+  }
+
+  if (
+    criteria.priority === "ease" &&
+    product.specs.weightKg !== null &&
+    product.specs.weightKg > 5
+  ) {
+    points.push({
+      code: "heavy",
+      text: `本体約${product.specs.weightKg}kgと、取り回しにやや重さを感じます`,
+    });
+  }
+
+  if (product.specs.releaseYear !== null && CURRENT_YEAR - product.specs.releaseYear >= 3) {
+    points.push({
+      code: "old_model",
+      text: `発売から${CURRENT_YEAR - product.specs.releaseYear}年経過したモデルです`,
+    });
+  }
+
+  const { min, max } = criteria.budgetYen;
+  const price = effectivePriceYen(product, offers);
+  if ((min !== null || max !== null) && price !== null && max !== null && price > max) {
+    points.push({
+      code: "price_over",
+      text: `価格が予算の上限（${max.toLocaleString()}円）を超えています`,
+    });
+  }
+
+  return points;
+}
+
 /** 未回答のうち、現在の分岐パス上にありcriteria導出に影響する質問キー（警告表示用） */
 export function unansweredImportantKeys(answers: AnswerRecord): RiceCookerAnswerKey[] {
   const active = activeQuestionKeys(QUESTIONS, answers);
