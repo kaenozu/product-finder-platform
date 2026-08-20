@@ -1,25 +1,100 @@
 import type { Env } from "./env";
 import { getAdapter, listAdapterCategories } from "./adapters";
-import { runIngest } from "./ingest/run";
+import { runIngest, type IngestSummary } from "./ingest/run";
+
+export type ScheduledCategoryStatus = IngestSummary["status"] | "failed";
+
+export interface ScheduledCategoryResult {
+  categoryKey: string;
+  status: ScheduledCategoryStatus;
+  runId: string | null;
+  errorSummary?: string;
+}
+
+export interface ScheduledRunSummary {
+  runId: string;
+  status: "succeeded" | "partial_failure" | "failed";
+  categories: ScheduledCategoryResult[];
+  counts: {
+    succeeded: number;
+    skipped: number;
+    rejected: number;
+    failed: number;
+  };
+}
+
+export function summarizeScheduledResults(
+  runId: string,
+  categories: ScheduledCategoryResult[]
+): ScheduledRunSummary {
+  const counts = {
+    succeeded: categories.filter((result) => result.status === "succeeded").length,
+    skipped: categories.filter((result) => result.status === "skipped").length,
+    rejected: categories.filter((result) => result.status === "rejected").length,
+    failed: categories.filter((result) => result.status === "failed").length,
+  };
+  const abnormal = counts.rejected + counts.failed;
+  return {
+    runId,
+    status:
+      abnormal === 0
+        ? "succeeded"
+        : counts.succeeded + counts.skipped === 0
+          ? "failed"
+          : "partial_failure",
+    categories,
+    counts,
+  };
+}
 
 /**
  * 毎日3時のバッチ処理（cron）。
- * 登録済み全カテゴリの手動キュレーションデータを再検証し、品質ゲートを通過したら公開する。
+ * 全カテゴリを処理し、カテゴリ単位の失敗を集計したうえで、異常時は例外化してcronを成功扱いにしない。
  */
-export async function handleScheduled(controller: ScheduledController, env: Env): Promise<void> {
+export async function handleScheduled(
+  controller: ScheduledController,
+  env: Env
+): Promise<ScheduledRunSummary> {
+  const runId = crypto.randomUUID();
   const now = new Date();
+  const categories: ScheduledCategoryResult[] = [];
+
   for (const categoryKey of listAdapterCategories()) {
     try {
       const adapter = getAdapter(categoryKey);
       const summary = await runIngest(env, adapter, categoryKey, now);
+      categories.push({
+        categoryKey,
+        status: summary.status,
+        runId: summary.runId,
+        errorSummary: summary.errorSummary,
+      });
       console.log(
-        `[scheduled] category=${categoryKey} status=${summary.status} runId=${summary.runId} ` +
-          `products=${summary.normalizedCount} version=${summary.versionId ?? "-"} ` +
+        `[scheduled] runId=${runId} category=${categoryKey} status=${summary.status} ` +
+          `ingestRunId=${summary.runId} products=${summary.normalizedCount} ` +
+          `version=${summary.versionId ?? "-"} ` +
           (summary.errorSummary ? `error=${summary.errorSummary}` : "")
       );
-    } catch (e) {
-      console.error(`[scheduled] category=${categoryKey} failed: ${String(e)}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      categories.push({ categoryKey, status: "failed", runId: null, errorSummary: message });
+      console.error(`[scheduled] runId=${runId} category=${categoryKey} failed: ${message}`);
     }
   }
+
+  const result = summarizeScheduledResults(runId, categories);
+  console.log(
+    `[scheduled] runId=${runId} result=${result.status} ` +
+      `succeeded=${result.counts.succeeded} skipped=${result.counts.skipped} ` +
+      `rejected=${result.counts.rejected} failed=${result.counts.failed}`
+  );
   void controller;
+
+  if (result.status !== "succeeded") {
+    throw new Error(
+      `[scheduled] runId=${runId} result=${result.status} ` +
+        `rejected=${result.counts.rejected} failed=${result.counts.failed}`
+    );
+  }
+  return result;
 }
