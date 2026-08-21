@@ -553,4 +553,10 @@ describe("API handlers（D1連動）", () => {
     const res = await handleProductDetail(workerEnv, "nonexistent-product");
     expect(res.status).toBe(404);
   });
+
+  it("product detail: 無効化カテゴリの商品を公開しない", async () => {
+    const disabledEnv = { ...workerEnv, ENABLED_CATEGORIES: "" } as Env;
+    const res = await handleProductDetail(disabledEnv, "panasonic-sr-x910e");
+    expect(res.status).toBe(404);
+  });
 });

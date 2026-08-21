@@ -98,10 +98,10 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
       return handleDevSeed(env);
     }
     if (pathname === "/api/config" || pathname === "/api/config/") {
-      return handleConfig(request);
+      return handleConfig(request, env);
     }
     if (pathname === "/api/categories" || pathname === "/api/categories/") {
-      return handleCategories();
+      return handleCategories(env);
     }
     if (pathname === "/api/diagnosis/evaluate" || pathname === "/api/diagnosis/evaluate/") {
       if (request.method !== "POST") {

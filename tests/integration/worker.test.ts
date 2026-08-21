@@ -287,6 +287,25 @@ describe("readiness and category rollout", () => {
     expect(body.error).toBe("category_not_enabled");
   });
 
+  it("未公開カテゴリはcategories/configから隠す", async () => {
+    const envWithDisabled = { ...workerEnv, ENABLED_CATEGORIES: "" } as Env;
+    const categories = await worker.fetch(
+      new Request("http://localhost/api/categories"),
+      envWithDisabled
+    );
+    expect(categories.status).toBe(200);
+    const categoriesBody = (await categories.json()) as { categories: unknown[] };
+    expect(categoriesBody.categories).toEqual([]);
+
+    const config = await worker.fetch(
+      new Request("http://localhost/api/config?category=rice-cooker"),
+      envWithDisabled
+    );
+    expect(config.status).toBe(404);
+    const configBody = (await config.json()) as { error: string };
+    expect(configBody.error).toBe("category_not_enabled");
+  });
+
   it("カテゴリ単位の状態がcategoriesに含まれる", async () => {
     const response = await worker.fetch(new Request("http://localhost/api/ready"), workerEnv);
     const body = (await response.json()) as {

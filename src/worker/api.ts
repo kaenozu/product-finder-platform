@@ -92,21 +92,24 @@ function splitSources(product: CatalogProduct) {
 }
 
 /** カテゴリ一覧（pitariko ポータル表示用） */
-export async function handleCategories(): Promise<Response> {
-  const categories = listModules().map((key) => {
-    const module = getModule(key);
-    return {
-      categoryKey: key,
-      questionCount: module.questions.length,
-      copy: {
-        appTitle: module.copy.appTitle,
-        heroTitle: module.copy.heroTitle,
-        heroLead: module.copy.heroLead,
-        resultTitle: module.copy.resultTitle,
-        resultPreview: module.copy.resultPreview,
-      },
-    };
-  });
+export async function handleCategories(env: Env): Promise<Response> {
+  const enabledKeys = getEnabledCategories(env);
+  const categories = listModules()
+    .filter((key) => enabledKeys.has(key))
+    .map((key) => {
+      const module = getModule(key);
+      return {
+        categoryKey: key,
+        questionCount: module.questions.length,
+        copy: {
+          appTitle: module.copy.appTitle,
+          heroTitle: module.copy.heroTitle,
+          heroLead: module.copy.heroLead,
+          resultTitle: module.copy.resultTitle,
+          resultPreview: module.copy.resultPreview,
+        },
+      };
+    });
   return json({ categories });
 }
 
@@ -164,7 +167,7 @@ export async function handleReady(env: Env): Promise<Response> {
   );
 }
 
-export async function handleConfig(request: Request): Promise<Response> {
+export async function handleConfig(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   const requested = url.searchParams.get("category") ?? undefined;
   const keys = listModules();
@@ -174,6 +177,9 @@ export async function handleConfig(request: Request): Promise<Response> {
   const key = requested ?? keys[0];
   if (!key) {
     return json({ error: "no_categories_registered" }, { status: 500 });
+  }
+  if (!getEnabledCategories(env).has(key)) {
+    return json({ error: "category_not_enabled", categoryKey: key }, { status: 404 });
   }
   const module = getModule(key);
   return json({
@@ -283,7 +289,8 @@ export async function handleProductDetail(env: Env, productId: string): Promise<
   if (!/^[a-z0-9-]+$/.test(productId)) {
     return json({ error: "invalid_product_id" }, { status: 400 });
   }
-  const keys = listModules();
+  const enabledKeys = getEnabledCategories(env);
+  const keys = listModules().filter((key) => enabledKeys.has(key));
   for (const categoryKey of keys) {
     const product = await getActiveProductById(env.DB, categoryKey, productId);
     if (product) {
