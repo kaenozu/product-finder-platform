@@ -155,6 +155,14 @@ test.describe("炊飯器選び診断", () => {
 
     await expect(page.getByRole("heading", { name: "あなたに合う炊飯器" })).toBeVisible();
     await expect(page.getByText(/一致度 \d+%/).first()).toBeVisible();
+    await expect(
+      page
+        .getByText("回答条件を独自に点数化した相対的な目安です。確率や正解率ではありません。")
+        .first()
+    ).toBeVisible();
+    await expect(
+      page.getByText(/商品仕様は公式情報を照合しています。順位は/).first()
+    ).toBeVisible();
     await expect(page.locator(".spec-chips span").first()).toContainText(/合/);
     await page.locator(".product-card").first().getByRole("button", { name: "詳しく見る" }).click();
     await expect(page.getByText("スコア内訳")).toBeVisible();
