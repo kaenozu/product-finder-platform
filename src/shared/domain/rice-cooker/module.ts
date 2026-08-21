@@ -47,9 +47,9 @@ export const COPY = {
   benefits: [
     { title: "かんたん数問", text: "6問の質問に答えるだけ" },
     { title: "相性をスコア化", text: "条件との一致度でランキング" },
-    { title: "スペックで比較", text: "容量・加熱方式・価格を一覧で" },
+    { title: "スペックで比較", text: "容量・加熱方式・スペックを一覧で" },
   ],
-  note: "診断は目安です。購入時は最新の価格・在庫をご確認ください。",
+  note: "診断は目安です。公式スペックに基づき、購入時は最新の価格・在庫をご確認ください。",
   resultTitle: "あなたに合う炊飯器",
   resultNoMatchTitle: "条件に合う炊飯器が見つかりませんでした",
 } as const;
@@ -197,13 +197,29 @@ export function hardMatch(
   return { pass: reasons.length === 0, reasons };
 }
 
+/** offer の鮮度上限（ミリ秒）。7 日。 */
+export const OFFER_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
 /**
- * 実効価格（円）: 実売オファー価格の最安値を最優先し、なければカタログ参考価格、それもなければnull。
- * 価格データが無い間は予算スコアを中立に保ち、不当に上下させない。
+ * 実効価格（円）: 鮮度のある有効 offer の最安値を最優先し、なければカタログ参考価格、それもなければnull。
+ *
+ * - 鮮度切れ（7日超）の offer は「実売価格」として扱わない
+ * - out_of_stock の offer は価格として使用しない
+ * - priceMinor は JPY で 1:1（1 priceMinor = 1 円）
+ * - 価格データが無い間は予算スコアを中立に保ち、不当に上下させない
  */
-function effectivePriceYen(product: RiceCookerProduct, offers?: ProductOffer[]): number | null {
+function effectivePriceYen(
+  product: RiceCookerProduct,
+  offers?: ProductOffer[],
+  now: Date = new Date()
+): number | null {
   if (offers && offers.length > 0) {
-    const prices = offers.map((o) => o.priceMinor).filter((p): p is number => p !== null && p > 0);
+    const cutoff = now.getTime() - OFFER_MAX_AGE_MS;
+    const prices = offers
+      .filter((o) => new Date(o.updatedAt).getTime() >= cutoff)
+      .filter((o) => o.availability !== "out_of_stock")
+      .map((o) => o.priceMinor)
+      .filter((p): p is number => p !== null && p > 0);
     if (prices.length > 0) return Math.min(...prices) / 100;
   }
   return product.referencePriceYen;
