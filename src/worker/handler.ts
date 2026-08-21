@@ -3,7 +3,6 @@ import type { Env } from "./env";
 import {
   handleCategories,
   handleConfig,
-  handleDataHealth,
   handleEvaluate,
   handleProductDetail,
   handleReady,
@@ -86,9 +85,6 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
     }
     if (pathname === "/api/ready" || pathname === "/api/ready/") {
       return handleReady(env);
-    }
-    if (pathname === "/api/data-health" || pathname === "/api/data-health/") {
-      return handleDataHealth(env);
     }
     if (pathname === "/api/dev/seed" || pathname === "/api/dev/seed/") {
       // ローカル開発/e2e専用。設定ミスで公開環境にDEV_SEEDが入っても実行しない。
