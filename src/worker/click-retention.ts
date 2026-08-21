@@ -95,38 +95,45 @@ export async function recordClickTimestamp(
  * - 1回の削除で最大 1000 行まで
  * - 削除結果を返す（監査用）
  */
-export async function cleanupExpiredClicks(env: Env): Promise<{ deleted: number; errors: number }> {
+export async function cleanupExpiredClicks(
+  env: Env
+): Promise<{ deleted: number; errors: number; hasMore: boolean }> {
   const cutoffDate = new Date(Date.now() - CLICK_RETENTION_DAYS * 24 * 60 * 60 * 1000);
   const cutoffIso = cutoffDate.toISOString();
 
   let deleted = 0;
-  let errors = 0;
   const BATCH_SIZE = 100;
+  const MAX_BATCHES_PER_RUN = 10;
 
-  try {
-    // 古いイベントをバッチで取得
-    const result = await env.DB.prepare(`SELECT id FROM click_events WHERE clicked_at < ? LIMIT ?`)
-      .bind(cutoffIso, BATCH_SIZE)
-      .all<{ id: string }>();
+  for (let batch = 0; batch < MAX_BATCHES_PER_RUN; batch += 1) {
+    try {
+      // 古いイベントをバッチで取得。1回のcronで最大1000行に制限する。
+      const result = await env.DB.prepare(
+        `SELECT id FROM click_events WHERE clicked_at < ? LIMIT ?`
+      )
+        .bind(cutoffIso, BATCH_SIZE)
+        .all<{ id: string }>();
 
-    if (!result.results || result.results.length === 0) {
-      return { deleted: 0, errors: 0 };
+      if (!result.results || result.results.length === 0) {
+        return { deleted, errors: 0, hasMore: false };
+      }
+
+      const ids = result.results.map((r) => r.id);
+      const placeholders = ids.map(() => "?").join(",");
+      await env.DB.prepare(`DELETE FROM click_events WHERE id IN (${placeholders})`)
+        .bind(...ids)
+        .run();
+
+      deleted += ids.length;
+      if (ids.length < BATCH_SIZE) {
+        return { deleted, errors: 0, hasMore: false };
+      }
+    } catch {
+      return { deleted, errors: 1, hasMore: true };
     }
-
-    // バッチ削除
-    const ids = result.results.map((r) => r.id);
-    const placeholders = ids.map(() => "?").join(",");
-
-    await env.DB.prepare(`DELETE FROM click_events WHERE id IN (${placeholders})`)
-      .bind(...ids)
-      .run();
-
-    deleted = ids.length;
-  } catch {
-    errors = 1;
   }
 
-  return { deleted, errors };
+  return { deleted, errors: 0, hasMore: true };
 }
 
 // ──────────────────────────────────────────────

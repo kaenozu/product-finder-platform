@@ -34,4 +34,16 @@ describe("scheduled ingest outcome", () => {
     expect(result.status).toBe("failed");
     expect(result.counts).toEqual({ succeeded: 0, skipped: 0, rejected: 1, failed: 1 });
   });
+
+  it("retention cleanupの失敗・残件をingest結果と分離して監査できる", () => {
+    const result = summarizeScheduledResults(
+      "run-4",
+      [{ categoryKey: "rice-cooker", status: "succeeded", runId: "ingest-4" }],
+      { deleted: 1000, errors: 0, hasMore: true }
+    );
+
+    expect(result.status).toBe("succeeded");
+    expect(result.counts.succeeded).toBe(1);
+    expect(result.retention).toEqual({ deleted: 1000, errors: 0, hasMore: true });
+  });
 });
