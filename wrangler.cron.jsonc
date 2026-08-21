@@ -12,6 +12,9 @@
     },
   ],
   "triggers": {
+    // UTC 03:00 = JST 12:00 (noon)。日本時間の昼前にカタログを更新する。
+    // Cloudflare Cron Triggers は UTC 基準。DST の影響を受けない日本時間前提。
+    // 時刻変更時は Production trigger 変更としてコード変更と分離して扱う。
     "crons": ["0 3 * * *"],
   },
   "observability": {

@@ -48,7 +48,9 @@ export function summarizeScheduledResults(
 }
 
 /**
- * 毎日3時のバッチ処理（cron）。
+ * 毎日のバッチ処理（cron）。
+ * 実行時刻: UTC 03:00 = JST 12:00 (noon)。
+ * Cloudflare Cron Triggers は UTC 基準。wrangler.cron.jsonc の `0 3 * * *` に対応。
  * 全カテゴリを処理し、カテゴリ単位の失敗を集計したうえで、異常時は例外化してcronを成功扱いにしない。
  */
 export async function handleScheduled(

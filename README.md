@@ -64,6 +64,14 @@ pnpm check:deploy   # wrangler deploy --dry-run
 - Productionでactive catalogが欠損・空の場合、診断APIが一時的なカタログ障害と通常のno-matchを区別できない既知Issueがある: [#13](https://github.com/kaenozu/product-finder-platform/issues/13)
 - 未知カテゴリを炊飯器へfallbackさせず`404 unsupported_category`で拒否する: [#14](https://github.com/kaenozu/product-finder-platform/issues/14)
 
+## Cron スケジュール
+
+- **実行時刻**: UTC 03:00 = JST 12:00 (noon)
+- **設定ファイル**: `wrangler.cron.jsonc` の `"0 3 * * *"`
+- **Cloudflare Cron Triggers は UTC 基準**: DST の影響を受けない日本時間前提
+- **時刻変更**: Production trigger 変更としてコード変更と分離して扱う
+- **read-back 確認**: deploy 後に `wrangler triggers list` で trigger 設定を確認する
+
 ## 品質管理
 
 - `pnpm verify:ci`（format/lint/typecheck/unit/integration/build/audit/deploy dry-run/E2E）を全修正で実行
