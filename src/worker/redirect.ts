@@ -1,6 +1,7 @@
 import type { Env } from "./env";
 import { isDuplicateClick, recordClickTimestamp } from "./click-retention";
 import { json } from "./http";
+import { getEnabledCategories } from "./api";
 
 /**
  * /go/:provider/:token — アフィリエイト遷移のリダイレクト。
@@ -39,6 +40,10 @@ export async function handleRedirect(
   const [offer] = offers.results ?? [];
   if (!offer || offers.results?.length !== 1) {
     return json({ error: "redirect_not_found" }, { status: 404 });
+  }
+
+  if (!getEnabledCategories(env).has(offer.category_key)) {
+    return json({ error: "category_not_enabled" }, { status: 404 });
   }
 
   // 鮮度チェック: 7日以上前のofferはリダイレクトしない
