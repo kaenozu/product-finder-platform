@@ -1,4 +1,5 @@
 import type { Env } from "./env";
+import { isDuplicateClick, recordClickTimestamp } from "./click-retention";
 import { json } from "./http";
 
 /**
@@ -48,25 +49,34 @@ export async function handleRedirect(
     return json({ error: "redirect_not_found" }, { status: 404 });
   }
 
-  try {
-    const id = crypto.randomUUID();
-    await env.DB.prepare(
-      `INSERT INTO click_events
-        (id, provider_key, provider_item_id, product_id, category_key, version_id, clicked_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
-    )
-      .bind(
-        id,
-        providerKey,
-        offer.provider_item_id,
-        offer.product_id,
-        offer.category_key,
-        offer.version_id,
-        new Date().toISOString()
+  // Bot detection and dedup check
+  const isDup = await isDuplicateClick(env, providerKey, offer.provider_item_id);
+
+  // デュープでない場合のみクリックを記録
+  if (!isDup) {
+    try {
+      const id = crypto.randomUUID();
+      await env.DB.prepare(
+        `INSERT INTO click_events
+          (id, provider_key, provider_item_id, product_id, category_key, version_id, clicked_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
       )
-      .run();
-  } catch {
-    // 計測失敗でもリダイレクトは続行する（ユーザー体験を妨げない）
+        .bind(
+          id,
+          providerKey,
+          offer.provider_item_id,
+          offer.product_id,
+          offer.category_key,
+          offer.version_id,
+          new Date().toISOString()
+        )
+        .run();
+
+      // クリック時刻を記録（デュープ防止用）
+      await recordClickTimestamp(env, providerKey, offer.provider_item_id);
+    } catch {
+      // 計測失敗でもリダイレクトは続行する（ユーザー体験を妨げない）
+    }
   }
 
   void request;
