@@ -186,3 +186,81 @@ describe("image proxy", () => {
     expect(response.status).toBe(502);
   });
 });
+
+describe("readiness and category rollout", () => {
+  it("ENABLED_CATEGORIES 未設定時は全カテゴリが有効（後方互換）", async () => {
+    // workerEnv に ENABLED_CATEGORIES が未設定
+    const response = await worker.fetch(new Request("http://localhost/api/ready"), workerEnv);
+    const body = (await response.json()) as {
+      ok: boolean;
+      categories: Array<{ categoryKey: string; enabled: boolean }>;
+    };
+
+    // rice-cooker が有効且つpublished なら 200、そうでなければ 503
+    const riceCooker = body.categories.find((c) => c.categoryKey === "rice-cooker");
+    expect(riceCooker).toBeDefined();
+    expect(riceCooker!.enabled).toBe(true);
+  });
+
+  it("ENABLED_CATEGORIES で指定したカテゴリのみ有効", async () => {
+    const envWithEnabled = {
+      ...workerEnv,
+      ENABLED_CATEGORIES: "rice-cooker",
+    } as Env;
+
+    const response = await worker.fetch(new Request("http://localhost/api/ready"), envWithEnabled);
+    const body = (await response.json()) as {
+      ok: boolean;
+      categories: Array<{ categoryKey: string; enabled: boolean }>;
+    };
+
+    const riceCooker = body.categories.find((c) => c.categoryKey === "rice-cooker");
+    expect(riceCooker).toBeDefined();
+    expect(riceCooker!.enabled).toBe(true);
+  });
+
+  it("未公開カテゴリへの診断は 404 で拒否", async () => {
+    const envWithDisabled = {
+      ...workerEnv,
+      ENABLED_CATEGORIES: "", // 全カテゴリを無効化
+    } as Env;
+
+    const response = await worker.fetch(
+      new Request("http://localhost/api/diagnosis/evaluate", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          categoryKey: "rice-cooker",
+          answers: { cookVolume: "5.5" },
+        }),
+      }),
+      envWithDisabled
+    );
+
+    expect(response.status).toBe(404);
+    const body = (await response.json()) as { error: string };
+    expect(body.error).toBe("category_not_enabled");
+  });
+
+  it("カテゴリ単位の状態がcategoriesに含まれる", async () => {
+    const response = await worker.fetch(new Request("http://localhost/api/ready"), workerEnv);
+    const body = (await response.json()) as {
+      categories: Array<{
+        categoryKey: string;
+        enabled: boolean;
+        published: boolean;
+        activeVersionStatus: string | null;
+        productCount: number;
+      }>;
+    };
+
+    expect(body.categories.length).toBeGreaterThan(0);
+    for (const cat of body.categories) {
+      expect(cat).toHaveProperty("categoryKey");
+      expect(cat).toHaveProperty("enabled");
+      expect(cat).toHaveProperty("published");
+      expect(cat).toHaveProperty("activeVersionStatus");
+      expect(cat).toHaveProperty("productCount");
+    }
+  });
+});
