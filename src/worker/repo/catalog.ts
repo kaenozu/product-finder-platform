@@ -473,3 +473,67 @@ export async function pruneOldVersions(
     ]);
   }
 }
+
+/**
+ * running状態のingest runをreconcileする。
+ *
+ * catalog_state.active_version_id を source of truth とし、
+ * running超過のingest runについて:
+ * - candidate_version が active_version_id と一致 → succeeded に修正
+ * - candidate_version が存在しない/未publish → failed に修正
+ *
+ * staleMinutes: running超過とみなす分数（デフォルト30分）
+ * 返り値: 修正したrun_idの一覧
+ */
+export async function reconcileStaleIngestRuns(
+  db: D1Database,
+  staleMinutes = 30
+): Promise<string[]> {
+  const cutoff = new Date(Date.now() - staleMinutes * 60 * 1000);
+  const stale = await db
+    .prepare(
+      `SELECT ir.run_id, ir.candidate_version, ir.category_key
+       FROM ingest_runs ir
+       WHERE ir.status = 'running' AND ir.started_at < ?`
+    )
+    .bind(iso(cutoff))
+    .all<{ run_id: string; candidate_version: string | null; category_key: string }>();
+
+  const reconciled: string[] = [];
+  for (const run of stale.results ?? []) {
+    if (!run.candidate_version) {
+      await db
+        .prepare(
+          `UPDATE ingest_runs SET status = 'failed', finished_at = ?,
+           error_summary = 'reconciled: no candidate version (stale running)'
+           WHERE run_id = ?`
+        )
+        .bind(iso(new Date()), run.run_id)
+        .run();
+      reconciled.push(run.run_id);
+      continue;
+    }
+
+    const active = await db
+      .prepare(`SELECT active_version_id FROM catalog_state WHERE category_key = ?`)
+      .bind(run.category_key)
+      .first<{ active_version_id: string | null }>();
+
+    const isActive = active?.active_version_id === run.candidate_version;
+    const newStatus = isActive ? "succeeded" : "failed";
+    const summary = isActive
+      ? "reconciled: candidate is active version (audit was lost)"
+      : "reconciled: candidate is not active version";
+
+    await db
+      .prepare(
+        `UPDATE ingest_runs SET status = ?, finished_at = ?, error_summary = ?
+         WHERE run_id = ?`
+      )
+      .bind(newStatus, iso(new Date()), summary, run.run_id)
+      .run();
+    reconciled.push(run.run_id);
+  }
+
+  return reconciled;
+}
