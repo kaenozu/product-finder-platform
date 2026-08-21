@@ -97,6 +97,14 @@ export interface CategoryCopy {
   /** 結果画面のタイトル */
   resultTitle: string;
   resultNoMatchTitle: string;
+  /** 診断前に見せる、カテゴリ固有の結果表示例 */
+  resultPreview?: {
+    candidateProduct: string;
+    matchSummary: string;
+    reasons: ReadonlyArray<string>;
+    weakPoint: string;
+    difference: string;
+  };
 }
 
 /** カテゴリ固有モジュールの契約（プロンプト§7の想定インターフェース） */

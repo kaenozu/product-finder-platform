@@ -6,21 +6,21 @@
 
 ## Threat Model
 
-| Endpoint | Threat | Impact | 対策 |
-|----------|--------|--------|------|
-| `/go/:provider/:token` | bot による click 連打 | click_events 汚染、D1 write 増加 | rate limit + dedup |
-| `/img` | cache-busting query による帯域濫用 | Cloudflare 帯域コスト増加 | rate limit + query normalization |
-| `/api/diagnosis/evaluate` | 大量リクエスト | D1 read 増加、CPU 時間消費 | rate limit |
+| Endpoint                  | Threat                             | Impact                           | 対策                             |
+| ------------------------- | ---------------------------------- | -------------------------------- | -------------------------------- |
+| `/go/:provider/:token`    | bot による click 連打              | click_events 汚染、D1 write 増加 | rate limit + dedup               |
+| `/img`                    | cache-busting query による帯域濫用 | Cloudflare 帯域コスト増加        | rate limit + query normalization |
+| `/api/diagnosis/evaluate` | 大量リクエスト                     | D1 read 増加、CPU 時間消費       | rate limit                       |
 
 ## Repo 内 Rate Limit (KV ベース)
 
 ### 設定値
 
-| Path | Window | Max Requests | Retry-After |
-|------|--------|-------------|-------------|
-| `/go` | 60s | 30 | 60s |
-| `/img` | 60s | 60 | 60s |
-| `/api/diagnosis/evaluate` | 60s | 20 | 60s |
+| Path                      | Window | Max Requests | Retry-After |
+| ------------------------- | ------ | ------------ | ----------- |
+| `/go`                     | 60s    | 30           | 60s         |
+| `/img`                    | 60s    | 60           | 60s         |
+| `/api/diagnosis/evaluate` | 60s    | 20           | 60s         |
 
 ### KV Namespace
 
@@ -29,9 +29,7 @@ Rate limit 用の KV namespace を wrangler に追加する:
 ```jsonc
 // wrangler.worker.jsonc
 {
-  "kv_namespaces": [
-    { "binding": "KV", "id": "..." }
-  ]
+  "kv_namespaces": [{ "binding": "KV", "id": "..." }],
 }
 ```
 
@@ -167,6 +165,6 @@ wrangler d1 execute product-finder-platform --command "SELECT COUNT(*) FROM clic
 
 ## 変更履歴
 
-| 日付 | 変更 | 理由 |
-|------|------|------|
+| 日付       | 変更     | 理由           |
+| ---------- | -------- | -------------- |
 | 2026-08-21 | 初版作成 | Issue #26 対応 |

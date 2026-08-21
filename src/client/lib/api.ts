@@ -39,11 +39,13 @@ export interface CandidateResponse {
 
 export interface CategorySummary {
   categoryKey: string;
+  questionCount: number;
   copy: {
     appTitle: string;
     heroTitle: string;
     heroLead: string;
     resultTitle: string;
+    resultPreview?: CategoryCopy["resultPreview"];
   };
 }
 

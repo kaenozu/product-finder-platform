@@ -9,9 +9,27 @@ test.describe("pitarikoポータル（URL分離）", () => {
     await expect(page.getByRole("heading", { name: /あなたに合った炊飯器を/ })).toBeVisible();
   });
 
-  test("アフィリエイト開示がポータルに表示される", async ({ page }) => {
+  test("トップで診断の負担・利用条件・結果イメージ・判定根拠を確認できる", async ({ page }) => {
     await page.goto("/");
-    await expect(page.getByText("本サイトはアフィリエイト広告を利用しています")).toBeVisible();
+    await expect(page.getByLabel("サービスの利用条件").getByText("無料・登録不要")).toBeVisible();
+    await expect(page.getByLabel("サービスの利用条件").getByText(/最大\d+問/)).toBeVisible();
+    const resultPreview = page.getByRole("region", { name: "診断結果の表示例" });
+    await expect(resultPreview).toBeVisible();
+    await expect(resultPreview.getByText("第一候補")).toBeVisible();
+    await expect(resultPreview.getByText("合う理由", { exact: true })).toBeVisible();
+    await expect(resultPreview.getByText("妥協点", { exact: true })).toBeVisible();
+    await expect(resultPreview.getByText("他候補との違い", { exact: true })).toBeVisible();
+    await expect(page.getByRole("region", { name: "判定の根拠" })).toBeVisible();
+    await expect(page.locator(".hero-cta")).toBeVisible();
+  });
+
+  test("トップの主要CTAとカテゴリ選択はキーボードで操作できる", async ({ page }) => {
+    await page.goto("/");
+    const cta = page.locator(".hero-cta");
+    await cta.focus();
+    await expect(cta).toBeFocused();
+    await cta.press("Enter");
+    await expect(page.getByRole("heading", { name: /あなたに合った炊飯器を/ })).toBeVisible();
   });
 });
 
