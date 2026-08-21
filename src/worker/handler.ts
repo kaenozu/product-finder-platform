@@ -10,7 +10,7 @@ import {
 import { handleRedirect } from "./redirect";
 import { handleDevSeed } from "./dev-seed";
 import { handleImageProxy } from "./image-proxy";
-import { checkRateLimit, getRateLimitConfig } from "./rate-limit";
+import { runSecurityChecks } from "./security";
 
 const MAX_JSON_BODY_BYTES = 32 * 1024;
 
@@ -61,14 +61,9 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
     return new Response(null, { status: 204, headers: corsHeaders() });
   }
 
-  // Rate limit check
-  const rateLimit = getRateLimitConfig(pathname);
-  if (rateLimit && env.KV) {
-    const rlResult = await checkRateLimit(request, rateLimit.path, env.KV, rateLimit.config);
-    if (!rlResult.allowed && rlResult.response) {
-      return rlResult.response;
-    }
-  }
+  // Security checks (rate limit, bot detection, etc.)
+  const blocked = await runSecurityChecks(request, env, pathname);
+  if (blocked) return blocked;
 
   if (isApi) {
     if (pathname === "/api/health" || pathname === "/api/health/") {
