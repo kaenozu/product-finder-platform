@@ -97,11 +97,13 @@ export async function handleCategories(): Promise<Response> {
     const module = getModule(key);
     return {
       categoryKey: key,
+      questionCount: module.questions.length,
       copy: {
         appTitle: module.copy.appTitle,
         heroTitle: module.copy.heroTitle,
         heroLead: module.copy.heroLead,
         resultTitle: module.copy.resultTitle,
+        resultPreview: module.copy.resultPreview,
       },
     };
   });

@@ -52,6 +52,13 @@ export const COPY = {
   note: "診断は目安です。公式スペックに基づき、購入時は最新の価格・在庫をご確認ください。",
   resultTitle: "あなたに合う炊飯器",
   resultNoMatchTitle: "条件に合う炊飯器が見つかりませんでした",
+  resultPreview: {
+    candidateProduct: "可変圧力IHジャー炊飯器 SR-X910E",
+    matchSummary: "容量・加熱方式・予算などの回答条件と商品仕様を照合した表示例",
+    reasons: ["5.5合で家族分をまとめて炊ける", "圧力IHを重視する条件に合う"],
+    weakPoint: "高機能モデルのため、予算や本体サイズは確認が必要",
+    difference: "他候補とは、加熱方式・容量・価格帯のバランスが異なります",
+  },
 } as const;
 
 /** 品質ゲート: 物理的な範囲チェック（信頼できる値のみ許容） */
