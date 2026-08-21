@@ -3,7 +3,7 @@ import { env } from "cloudflare:test";
 import worker from "../../worker/index";
 import type { Env } from "../../src/worker/env";
 
-const workerEnv = env as unknown as Env;
+const workerEnv = { ...env, RATE_LIMIT_BYPASS: "1" } as unknown as Env;
 
 describe("worker routing and request boundaries", () => {
   it("不正なpercent encodingを400へ変換する", async () => {
@@ -285,5 +285,25 @@ describe("readiness and category rollout", () => {
       expect(cat).toHaveProperty("activeVersionStatus");
       expect(cat).toHaveProperty("productCount");
     }
+  });
+
+  it("KV未設定+RATE_LIMIT_BYPASSなしでrate limit対象endpointは503", async () => {
+    const noBypassEnv = { ...workerEnv, RATE_LIMIT_BYPASS: undefined } as unknown as Env;
+    const response = await worker.fetch(
+      new Request("http://localhost/go/rakuten/token"),
+      noBypassEnv
+    );
+    expect(response.status).toBe(503);
+    const body = (await response.json()) as { error: string };
+    expect(body.error).toBe("rate_limit_unavailable");
+  });
+
+  it("RATE_LIMIT_BYPASS=1でrate limit対象endpointが通過する", async () => {
+    const response = await worker.fetch(
+      new Request("http://localhost/go/rakuten/nonexistent"),
+      workerEnv
+    );
+    // bypassありなので503にはならない（404 or 400）
+    expect(response.status).not.toBe(503);
   });
 });
