@@ -12,6 +12,23 @@ import {
 import { json } from "./http";
 import type { Env } from "./env";
 
+/**
+ * 公開有効なカテゴリキーの一覧を取得する。
+ * ENABLED_CATEGORIES が未設定なら全カテゴリを有効とする（後方互換）。
+ * カンマ区切りの文字列からパースする。
+ */
+export function getEnabledCategories(env: Env): Set<string> {
+  const all = new Set(listModules());
+  if (env.ENABLED_CATEGORIES === undefined || env.ENABLED_CATEGORIES === null) return all;
+  const enabled = new Set(
+    env.ENABLED_CATEGORIES.split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
+  );
+  // ENABLED_CATEGORIES に含まれるが registry に未登録のキーは無視
+  return new Set([...enabled].filter((k) => all.has(k)));
+}
+
 export const evaluationRequestSchema = z.object({
   categoryKey: z
     .string()
@@ -91,16 +108,45 @@ export async function handleCategories(): Promise<Response> {
   return json({ categories });
 }
 
+/**
+ * カテゴリの readiness 状態。
+ * - enabled: ENABLED_CATEGORIES で公開有効かどうか
+ * - published: active catalog が published かつ productCount > 0
+ */
+interface CategoryReadiness {
+  categoryKey: string;
+  enabled: boolean;
+  published: boolean;
+  activeVersionStatus: string | null;
+  productCount: number;
+}
+
 export async function handleReady(env: Env): Promise<Response> {
-  const categories = await Promise.all(
-    listModules().map((categoryKey) => getCatalogReadiness(env.DB, categoryKey))
+  const enabledKeys = getEnabledCategories(env);
+  const allCategories = await Promise.all(
+    listModules().map(async (categoryKey) => {
+      const readiness = await getCatalogReadiness(env.DB, categoryKey);
+      return {
+        categoryKey,
+        enabled: enabledKeys.has(categoryKey),
+        published: readiness.activeVersionStatus === "published" && readiness.productCount > 0,
+        activeVersionStatus: readiness.activeVersionStatus,
+        productCount: readiness.productCount,
+      } satisfies CategoryReadiness;
+    })
   );
-  const ready = categories.every(
-    (category) => category.activeVersionStatus === "published" && category.productCount > 0
-  );
+
+  // サービスレベル readiness: 公開有効なカテゴリが全て published
+  const enabledCategories = allCategories.filter((c) => c.enabled);
+  const serviceReady = enabledCategories.every((c) => c.published);
+
   return json(
-    { ok: ready, service: "product-finder-platform", categories },
-    { status: ready ? 200 : 503 }
+    {
+      ok: serviceReady,
+      service: "product-finder-platform",
+      categories: allCategories,
+    },
+    { status: serviceReady ? 200 : 503 }
   );
 }
 
@@ -142,6 +188,19 @@ export async function handleEvaluate(env: Env, body: unknown): Promise<Response>
     module = getModule(categoryKey);
   } catch {
     return json({ error: "unsupported_category", categoryKey }, { status: 400 });
+  }
+
+  // 公開有効でないカテゴリは診断を拒否
+  const enabledKeys = getEnabledCategories(env);
+  if (!enabledKeys.has(categoryKey)) {
+    return json(
+      {
+        error: "category_not_enabled",
+        categoryKey,
+        message: "このカテゴリはまだ公開されていません",
+      },
+      { status: 404 }
+    );
   }
 
   const answerErrors = validateAnswers(categoryKey, answers);
