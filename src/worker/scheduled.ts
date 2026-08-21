@@ -2,6 +2,7 @@ import type { Env } from "./env";
 import { getAdapter, listAdapterCategories } from "./adapters";
 import { runIngest, type IngestSummary } from "./ingest/run";
 import { cleanupExpiredClicks } from "./click-retention";
+import { reconcileStaleIngestRuns } from "./repo/catalog";
 
 export type ScheduledCategoryStatus = IngestSummary["status"] | "failed";
 
@@ -27,12 +28,14 @@ export interface ScheduledRunSummary {
     errors: number;
     hasMore: boolean;
   };
+  reconciled: number;
 }
 
 export function summarizeScheduledResults(
   runId: string,
   categories: ScheduledCategoryResult[],
-  retention = { deleted: 0, errors: 0, hasMore: false }
+  retention = { deleted: 0, errors: 0, hasMore: false },
+  reconciled = 0
 ): ScheduledRunSummary {
   const counts = {
     succeeded: categories.filter((result) => result.status === "succeeded").length,
@@ -52,6 +55,7 @@ export function summarizeScheduledResults(
     categories,
     counts,
     retention,
+    reconciled,
   };
 }
 
@@ -104,7 +108,20 @@ export async function handleScheduled(
     retention = { deleted: 0, errors: 1, hasMore: true };
     console.error(`[scheduled] runId=${runId} retention failed: ${message}`);
   }
-  const result = summarizeScheduledResults(runId, categories, retention);
+
+  // running超過のingest runをreconcile（audit失敗 recovery）
+  let reconciled = 0;
+  try {
+    const ids = await reconcileStaleIngestRuns(env.DB);
+    reconciled = ids.length;
+    if (reconciled > 0) {
+      console.log(`[scheduled] runId=${runId} reconciled=${reconciled} staleRuns: ${ids.join(",")}`);
+    }
+  } catch (error) {
+    console.error(`[scheduled] runId=${runId} reconcile failed: ${String(error)}`);
+  }
+
+  const result = summarizeScheduledResults(runId, categories, retention, reconciled);
   console.log(
     `[scheduled] runId=${runId} result=${result.status} ` +
       `succeeded=${result.counts.succeeded} skipped=${result.counts.skipped} ` +
