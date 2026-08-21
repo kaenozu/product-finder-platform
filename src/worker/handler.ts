@@ -61,12 +61,21 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
     return new Response(null, { status: 204, headers: corsHeaders() });
   }
 
-  // Rate limit check
+  // Rate limit check — fail-closed when KV binding is absent
   const rateLimit = getRateLimitConfig(pathname);
-  if (rateLimit && env.KV) {
-    const rlResult = await checkRateLimit(request, rateLimit.path, env.KV, rateLimit.config);
-    if (!rlResult.allowed && rlResult.response) {
-      return rlResult.response;
+  if (rateLimit) {
+    if (!env.KV) {
+      // KV未設定 = Productionでrate limitが無効化されている状態。
+      // fail-closed: 503で応答し、設定不整合を検出する。
+      // ローカル開発では RATE_LIMIT_BYPASS=1 で回避可能。
+      if (!env.RATE_LIMIT_BYPASS) {
+        return json({ error: "rate_limit_unavailable", path: rateLimit.path }, { status: 503 });
+      }
+    } else {
+      const rlResult = await checkRateLimit(request, rateLimit.path, env.KV, rateLimit.config);
+      if (!rlResult.allowed && rlResult.response) {
+        return rlResult.response;
+      }
     }
   }
 
