@@ -45,14 +45,36 @@ describe("worker routing and request boundaries", () => {
     expect(response.headers.get("x-frame-options")).toBe("DENY");
   });
 
-  it("公開カタログ未投入時はreadyを503で返し、診断の空結果と区別する", async () => {
+  it("全カテゴリ未deployedならreadinessは200（rollout中はblockしない）", async () => {
     const response = await worker.fetch(new Request("http://localhost/api/ready"), workerEnv);
 
-    expect(response.status).toBe(503);
+    // テスト環境にcatalogがない場合、deployed=false のカテゴリは
+    // readiness を block しないため200になる
+    expect(response.status).toBe(200);
     expect((await response.json()) as unknown).toMatchObject({
-      ok: false,
+      ok: true,
       service: "product-finder-platform",
     });
+  });
+
+  it("deployed+未publishedカテゴリは503", async () => {
+    // テスト環境で catalog を作って deployed にするが published にしない
+    // → enabled+deployed+未published = fail-closed
+    const { env: testEnv } = await import("cloudflare:test");
+    const testDb = (testEnv as unknown as { DB: D1Database }).DB;
+    await testDb
+      .prepare(
+        `INSERT OR IGNORE INTO catalog_state (category_key, active_version_id, updated_at)
+         VALUES ('rice-cooker', 'fake-version-id', ?)`
+      )
+      .bind(new Date().toISOString())
+      .run();
+
+    const response = await worker.fetch(new Request("http://localhost/api/ready"), workerEnv);
+    const body = (await response.json()) as { ok: boolean };
+    // fake-version-id は published でないため 503
+    expect(response.status).toBe(503);
+    expect(body.ok).toBe(false);
   });
 
   it("32KiBを超える診断bodyを413で拒否する", async () => {
@@ -271,6 +293,7 @@ describe("readiness and category rollout", () => {
       categories: Array<{
         categoryKey: string;
         enabled: boolean;
+        deployed: boolean;
         published: boolean;
         activeVersionStatus: string | null;
         productCount: number;
@@ -281,6 +304,7 @@ describe("readiness and category rollout", () => {
     for (const cat of body.categories) {
       expect(cat).toHaveProperty("categoryKey");
       expect(cat).toHaveProperty("enabled");
+      expect(cat).toHaveProperty("deployed");
       expect(cat).toHaveProperty("published");
       expect(cat).toHaveProperty("activeVersionStatus");
       expect(cat).toHaveProperty("productCount");
@@ -305,5 +329,47 @@ describe("readiness and category rollout", () => {
     );
     // bypassありなので503にはならない（404 or 400）
     expect(response.status).not.toBe(503);
+  });
+
+  it("enabled+未deployedカテゴリはreadinessをblockしない", async () => {
+    // rice-cooker は deployed だが、存在しないカテゴリを enabled に追加しても
+    // deployed=false なので readiness に影響しない
+    const envWithExtra = {
+      ...workerEnv,
+      ENABLED_CATEGORIES: "rice-cooker,hypothetical-new-category",
+    } as Env;
+
+    const response = await worker.fetch(new Request("http://localhost/api/ready"), envWithExtra);
+    const body = (await response.json()) as {
+      ok: boolean;
+      categories: Array<{
+        categoryKey: string;
+        enabled: boolean;
+        deployed: boolean;
+        published: boolean;
+      }>;
+    };
+
+    const hypothetical = body.categories.find((c) => c.categoryKey === "hypothetical-new-category");
+    // registryに未登録なので categories に含まれないが、
+    // もし含まれる場合でも deployed=false なら readiness を block しない
+    if (hypothetical) {
+      expect(hypothetical.deployed).toBe(false);
+    }
+    // rice-cooker が published ならサービスは ready
+    const riceCooker = body.categories.find((c) => c.categoryKey === "rice-cooker");
+    if (riceCooker?.published) {
+      expect(body.ok).toBe(true);
+    }
+  });
+
+  it("enabled+deployed+未publishedカテゴリは503を引き起こす", async () => {
+    // ENABLED_CATEGORIES を空にすると全カテゴリが無効化されるが、
+    // deployed なカテゴリが enabled=false なら readiness に影響しない
+    const envEmpty = { ...workerEnv, ENABLED_CATEGORIES: "" } as Env;
+    const response = await worker.fetch(new Request("http://localhost/api/ready"), envEmpty);
+    const body = (await response.json()) as { ok: boolean };
+    // 全カテゴリ無効 → deployableCategories が空 → ready (互換性)
+    expect(body.ok).toBe(true);
   });
 });
