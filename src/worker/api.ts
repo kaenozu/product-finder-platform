@@ -113,34 +113,46 @@ export async function handleCategories(): Promise<Response> {
 /**
  * カテゴリの readiness 状態。
  * - enabled: ENABLED_CATEGORIES で公開有効かどうか
+ * - deployed: active catalog が存在するか（未デプロイ = rollout 中）
  * - published: active catalog が published かつ productCount > 0
  */
 interface CategoryReadiness {
   categoryKey: string;
   enabled: boolean;
+  deployed: boolean;
   published: boolean;
   activeVersionStatus: string | null;
   productCount: number;
 }
 
+/**
+ * サービスレベル readiness。
+ *
+ * enabled + deployed カテゴリは published でなければならない（fail-closed）。
+ * enabled + 未deployed カテゴリは rollout 中（code deploy → data publish）なので
+ * readiness を block しない。これにより、新カテゴリ追加時に既存サービスが
+ * 不必要に503にならない。
+ */
 export async function handleReady(env: Env): Promise<Response> {
   const enabledKeys = getEnabledCategories(env);
   const allCategories = await Promise.all(
     listModules().map(async (categoryKey) => {
       const readiness = await getCatalogReadiness(env.DB, categoryKey);
+      const published = readiness.activeVersionStatus === "published" && readiness.productCount > 0;
+      const deployed = readiness.activeVersionId !== null;
       return {
         categoryKey,
         enabled: enabledKeys.has(categoryKey),
-        published: readiness.activeVersionStatus === "published" && readiness.productCount > 0,
+        deployed,
+        published,
         activeVersionStatus: readiness.activeVersionStatus,
         productCount: readiness.productCount,
       } satisfies CategoryReadiness;
     })
   );
 
-  // サービスレベル readiness: 公開有効なカテゴリが全て published
-  const enabledCategories = allCategories.filter((c) => c.enabled);
-  const serviceReady = enabledCategories.every((c) => c.published);
+  const deployableCategories = allCategories.filter((c) => c.enabled && c.deployed);
+  const serviceReady = deployableCategories.every((c) => c.published);
 
   return json(
     {
