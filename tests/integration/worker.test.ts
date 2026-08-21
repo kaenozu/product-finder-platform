@@ -286,4 +286,56 @@ describe("readiness and category rollout", () => {
       expect(cat).toHaveProperty("productCount");
     }
   });
+
+  it("categoriesにdataHealthフィールドが含まれる", async () => {
+    const response = await worker.fetch(new Request("http://localhost/api/ready"), workerEnv);
+    const body = (await response.json()) as {
+      categories: Array<{
+        categoryKey: string;
+        dataHealth: {
+          lastIngestStatus: string | null;
+          lastIngestFinishedAt: string | null;
+          lastSourceUpdatedAt: string | null;
+          consecutiveFailures: number;
+        };
+      }>;
+    };
+
+    expect(body.categories.length).toBeGreaterThan(0);
+    for (const cat of body.categories) {
+      expect(cat).toHaveProperty("dataHealth");
+      expect(cat.dataHealth).toHaveProperty("lastIngestStatus");
+      expect(cat.dataHealth).toHaveProperty("lastIngestFinishedAt");
+      expect(cat.dataHealth).toHaveProperty("lastSourceUpdatedAt");
+      expect(cat.dataHealth).toHaveProperty("consecutiveFailures");
+    }
+  });
+});
+
+describe("data-health endpoint", () => {
+  it("全カテゴリのingest healthを返す", async () => {
+    const response = await worker.fetch(new Request("http://localhost/api/data-health"), workerEnv);
+    const body = (await response.json()) as {
+      ok: boolean;
+      categories: Array<{
+        categoryKey: string;
+        published: boolean;
+        productCount: number;
+        lastIngestStatus: string | null;
+        lastIngestFinishedAt: string | null;
+        lastSourceUpdatedAt: string | null;
+        consecutiveFailures: number;
+      }>;
+    };
+
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.categories.length).toBeGreaterThan(0);
+    for (const cat of body.categories) {
+      expect(cat).toHaveProperty("categoryKey");
+      expect(cat).toHaveProperty("published");
+      expect(cat).toHaveProperty("lastIngestStatus");
+      expect(cat).toHaveProperty("consecutiveFailures");
+    }
+  });
 });

@@ -407,6 +407,64 @@ export async function getLastContentHash(
   return row?.content_hash ?? null;
 }
 
+export interface IngestHealth {
+  categoryKey: string;
+  lastIngestStatus: string | null;
+  lastIngestFinishedAt: string | null;
+  lastSourceUpdatedAt: string | null;
+  consecutiveFailures: number;
+}
+
+/**
+ * カテゴリのingest運用健全性を返す。
+ * active catalogのsource_updated_at（鮮度）と直近ingest runの状態を監査する。
+ */
+export async function getIngestHealth(db: D1Database, categoryKey: string): Promise<IngestHealth> {
+  const latest = await db
+    .prepare(
+      `SELECT status, finished_at
+       FROM ingest_runs
+       WHERE category_key = ?
+       ORDER BY started_at DESC LIMIT 1`
+    )
+    .bind(categoryKey)
+    .first<{ status: string; finished_at: string | null }>();
+
+  const freshRow = await db
+    .prepare(
+      `SELECT MAX(p.source_updated_at) AS last_source_updated_at
+       FROM products p
+       JOIN catalog_state s ON s.active_version_id = p.version_id
+       WHERE s.category_key = ?`
+    )
+    .bind(categoryKey)
+    .first<{ last_source_updated_at: string | null }>();
+
+  let consecutiveFailures = 0;
+  if (latest && latest.status !== "succeeded") {
+    const rows = await db
+      .prepare(
+        `SELECT status FROM ingest_runs
+         WHERE category_key = ?
+         ORDER BY started_at DESC LIMIT 10`
+      )
+      .bind(categoryKey)
+      .all<{ status: string }>();
+    for (const row of rows.results ?? []) {
+      if (row.status === "succeeded") break;
+      consecutiveFailures++;
+    }
+  }
+
+  return {
+    categoryKey,
+    lastIngestStatus: latest?.status ?? null,
+    lastIngestFinishedAt: latest?.finished_at ?? null,
+    lastSourceUpdatedAt: freshRow?.last_source_updated_at ?? null,
+    consecutiveFailures,
+  };
+}
+
 export async function finishIngestRun(
   db: D1Database,
   runId: string,

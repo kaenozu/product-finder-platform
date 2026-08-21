@@ -13,6 +13,8 @@ import {
   listOffersForProducts,
   getActiveVersionId,
   pruneOldVersions,
+  createIngestRun,
+  getIngestHealth,
 } from "../../src/worker/repo/catalog";
 import { runIngest } from "../../src/worker/ingest/run";
 import { ManualRiceCookerAdapter } from "../../src/worker/adapters/manual";
@@ -552,5 +554,83 @@ describe("API handlers（D1連動）", () => {
   it("product detail: 存在しない商品で404", async () => {
     const res = await handleProductDetail(workerEnv, "nonexistent-product");
     expect(res.status).toBe(404);
+  });
+});
+
+describe("getIngestHealth", () => {
+  beforeEach(async () => {
+    await db().exec(
+      "DELETE FROM product_offers; DELETE FROM products; DELETE FROM catalog_versions; DELETE FROM catalog_state; DELETE FROM ingest_runs;"
+    );
+  });
+
+  it("ingest runがない場合は全フィールドがnull/0", async () => {
+    const health = await getIngestHealth(db(), CATEGORY);
+    expect(health.categoryKey).toBe(CATEGORY);
+    expect(health.lastIngestStatus).toBeNull();
+    expect(health.lastIngestFinishedAt).toBeNull();
+    expect(health.lastSourceUpdatedAt).toBeNull();
+    expect(health.consecutiveFailures).toBe(0);
+  });
+
+  it("成功ingest runがある場合はlastIngestStatus=succeeded", async () => {
+    const runId = await createIngestRun(db(), "test", CATEGORY, new Date("2026-08-20T00:00:00Z"));
+    await db()
+      .prepare(`UPDATE ingest_runs SET status = 'succeeded', finished_at = ? WHERE run_id = ?`)
+      .bind("2026-08-20T00:01:00Z", runId)
+      .run();
+
+    const health = await getIngestHealth(db(), CATEGORY);
+    expect(health.lastIngestStatus).toBe("succeeded");
+    expect(health.lastIngestFinishedAt).toBe("2026-08-20T00:01:00Z");
+    expect(health.consecutiveFailures).toBe(0);
+  });
+
+  it("連続失敗でconsecutiveFailuresが増える", async () => {
+    for (let i = 0; i < 3; i++) {
+      const runId = await createIngestRun(
+        db(),
+        "test",
+        CATEGORY,
+        new Date(`2026-08-20T0${i}:00:00Z`)
+      );
+      await db()
+        .prepare(`UPDATE ingest_runs SET status = 'failed', finished_at = ? WHERE run_id = ?`)
+        .bind(`2026-08-20T0${i}:00:30Z`, runId)
+        .run();
+    }
+
+    const health = await getIngestHealth(db(), CATEGORY);
+    expect(health.lastIngestStatus).toBe("failed");
+    expect(health.consecutiveFailures).toBe(3);
+  });
+
+  it("成功後に失敗があればconsecutiveFailuresは0リセット", async () => {
+    const r1 = await createIngestRun(db(), "test", CATEGORY, new Date("2026-08-20T00:00:00Z"));
+    await db()
+      .prepare(`UPDATE ingest_runs SET status = 'succeeded', finished_at = ? WHERE run_id = ?`)
+      .bind("2026-08-20T00:01:00Z", r1)
+      .run();
+    const r2 = await createIngestRun(db(), "test", CATEGORY, new Date("2026-08-20T01:00:00Z"));
+    await db()
+      .prepare(`UPDATE ingest_runs SET status = 'failed', finished_at = ? WHERE run_id = ?`)
+      .bind("2026-08-20T01:00:30Z", r2)
+      .run();
+
+    const health = await getIngestHealth(db(), CATEGORY);
+    expect(health.lastIngestStatus).toBe("failed");
+    expect(health.consecutiveFailures).toBe(1);
+  });
+
+  it("published catalogがある場合はlastSourceUpdatedAtが返る", async () => {
+    await ensureCatalogState(db(), CATEGORY);
+    const p = makeProduct("p-health-1");
+    const vId = await createStagingVersion(db(), CATEGORY, "test", 1);
+    await insertProducts(db(), vId, [p]);
+    await setVersionStatus(db(), vId, "valid");
+    await publishVersion(db(), CATEGORY, vId);
+
+    const health = await getIngestHealth(db(), CATEGORY);
+    expect(health.lastSourceUpdatedAt).toBe("2026-08-19");
   });
 });

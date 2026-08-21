@@ -6,6 +6,7 @@ import type { CatalogProduct, ProductOffer, AnswerRecord } from "../shared/domai
 import {
   getActiveProductById,
   getCatalogReadiness,
+  getIngestHealth,
   listActiveProducts,
   listOffersForProducts,
 } from "./repo/catalog";
@@ -115,30 +116,46 @@ export async function handleCategories(): Promise<Response> {
  * - enabled: ENABLED_CATEGORIES で公開有効かどうか
  * - published: active catalog が published かつ productCount > 0
  */
+interface DataHealth {
+  lastIngestStatus: string | null;
+  lastIngestFinishedAt: string | null;
+  lastSourceUpdatedAt: string | null;
+  consecutiveFailures: number;
+}
+
 interface CategoryReadiness {
   categoryKey: string;
   enabled: boolean;
   published: boolean;
   activeVersionStatus: string | null;
   productCount: number;
+  dataHealth: DataHealth;
 }
 
 export async function handleReady(env: Env): Promise<Response> {
   const enabledKeys = getEnabledCategories(env);
   const allCategories = await Promise.all(
     listModules().map(async (categoryKey) => {
-      const readiness = await getCatalogReadiness(env.DB, categoryKey);
+      const [readiness, health] = await Promise.all([
+        getCatalogReadiness(env.DB, categoryKey),
+        getIngestHealth(env.DB, categoryKey),
+      ]);
       return {
         categoryKey,
         enabled: enabledKeys.has(categoryKey),
         published: readiness.activeVersionStatus === "published" && readiness.productCount > 0,
         activeVersionStatus: readiness.activeVersionStatus,
         productCount: readiness.productCount,
+        dataHealth: {
+          lastIngestStatus: health.lastIngestStatus,
+          lastIngestFinishedAt: health.lastIngestFinishedAt,
+          lastSourceUpdatedAt: health.lastSourceUpdatedAt,
+          consecutiveFailures: health.consecutiveFailures,
+        },
       } satisfies CategoryReadiness;
     })
   );
 
-  // サービスレベル readiness: 公開有効なカテゴリが全て published
   const enabledCategories = allCategories.filter((c) => c.enabled);
   const serviceReady = enabledCategories.every((c) => c.published);
 
@@ -150,6 +167,25 @@ export async function handleReady(env: Env): Promise<Response> {
     },
     { status: serviceReady ? 200 : 503 }
   );
+}
+
+export async function handleDataHealth(env: Env): Promise<Response> {
+  const allCategories = await Promise.all(
+    listModules().map(async (categoryKey) => {
+      const [readiness, health] = await Promise.all([
+        getCatalogReadiness(env.DB, categoryKey),
+        getIngestHealth(env.DB, categoryKey),
+      ]);
+      const { categoryKey: _, ...healthFields } = health;
+      return {
+        categoryKey,
+        published: readiness.activeVersionStatus === "published" && readiness.productCount > 0,
+        productCount: readiness.productCount,
+        ...healthFields,
+      };
+    })
+  );
+  return json({ ok: true, categories: allCategories });
 }
 
 export async function handleConfig(request: Request): Promise<Response> {
