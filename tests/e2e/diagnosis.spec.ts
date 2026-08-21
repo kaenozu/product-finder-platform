@@ -5,7 +5,7 @@ test.describe("pitarikoポータル（URL分離）", () => {
     await page.goto("/");
     await expect(page.getByRole("heading", { name: /pitariko/ })).toBeVisible();
     await expect(page.getByText("診断を選ぶ")).toBeVisible();
-    await page.getByRole("link", { name: /炊飯器選び診断/ }).click();
+    await page.locator("a.category-card").filter({ hasText: "炊飯器選び診断" }).click();
     await expect(page.getByRole("heading", { name: /あなたに合った炊飯器を/ })).toBeVisible();
   });
 
@@ -30,6 +30,40 @@ test.describe("pitarikoポータル（URL分離）", () => {
     await expect(cta).toBeFocused();
     await cta.press("Enter");
     await expect(page.getByRole("heading", { name: /あなたに合った炊飯器を/ })).toBeVisible();
+  });
+
+  test("カテゴリが複数あるときは先頭カテゴリへ自動遷移せず選択へ案内する", async ({ page }) => {
+    await page.route("**/api/categories", async (route) => {
+      await route.fulfill({
+        json: {
+          categories: [
+            {
+              categoryKey: "rice-cooker",
+              questionCount: 5,
+              copy: { appTitle: "炊飯器", heroTitle: "炊飯器診断", heroLead: "" },
+            },
+            {
+              categoryKey: "water-bottle",
+              questionCount: 4,
+              copy: { appTitle: "水筒", heroTitle: "水筒診断", heroLead: "" },
+            },
+          ],
+        },
+      });
+    });
+    await page.goto("/");
+    const cta = page.locator(".hero-cta");
+    await expect(cta).toHaveText("カテゴリを選んで診断する →");
+    await expect(cta).toHaveAttribute("href", "#category-heading");
+  });
+
+  test("カテゴリがないときは空リンクの主要CTAを表示しない", async ({ page }) => {
+    await page.route("**/api/categories", async (route) => {
+      await route.fulfill({ json: { categories: [] } });
+    });
+    await page.goto("/");
+    await expect(page.locator(".hero-cta")).toHaveCount(0);
+    await expect(page.getByText("現在診断できるカテゴリはありません。")).toBeVisible();
   });
 });
 
