@@ -1,4 +1,5 @@
 import type { Env } from "./env";
+import { isDuplicateClick, recordClickTimestamp } from "./click-retention";
 import { json } from "./http";
 
 /**
@@ -17,7 +18,7 @@ export async function handleRedirect(
   }
 
   const offers = await env.DB.prepare(
-    `SELECT o.version_id, o.product_id, p.category_key, o.provider_item_id, o.outbound_url
+    `SELECT o.version_id, o.product_id, p.category_key, o.provider_item_id, o.outbound_url, o.updated_at, o.availability
        FROM product_offers o
        JOIN catalog_state s ON s.active_version_id = o.version_id
        JOIN products p ON p.version_id = o.version_id AND p.product_id = o.product_id
@@ -31,11 +32,25 @@ export async function handleRedirect(
       category_key: string;
       provider_item_id: string;
       outbound_url: string;
+      updated_at: string;
+      availability: string | null;
     }>();
 
   const [offer] = offers.results ?? [];
   if (!offer || offers.results?.length !== 1) {
     return json({ error: "redirect_not_found" }, { status: 404 });
+  }
+
+  // 鮮度チェック: 7日以上前のofferはリダイレクトしない
+  const offerAge = Date.now() - new Date(offer.updated_at ?? "1970-01-01").getTime();
+  const OFFER_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+  if (offerAge > OFFER_MAX_AGE_MS) {
+    return json({ error: "offer_stale" }, { status: 410 });
+  }
+
+  // availability チェック: out_of_stock はリダイレクトしない
+  if (offer.availability === "out_of_stock") {
+    return json({ error: "offer_unavailable" }, { status: 410 });
   }
 
   let outboundUrl: URL;
@@ -48,25 +63,34 @@ export async function handleRedirect(
     return json({ error: "redirect_not_found" }, { status: 404 });
   }
 
-  try {
-    const id = crypto.randomUUID();
-    await env.DB.prepare(
-      `INSERT INTO click_events
-        (id, provider_key, provider_item_id, product_id, category_key, version_id, clicked_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
-    )
-      .bind(
-        id,
-        providerKey,
-        offer.provider_item_id,
-        offer.product_id,
-        offer.category_key,
-        offer.version_id,
-        new Date().toISOString()
+  // Bot detection and dedup check
+  const isDup = await isDuplicateClick(env, providerKey, offer.provider_item_id);
+
+  // デュープでない場合のみクリックを記録
+  if (!isDup) {
+    try {
+      const id = crypto.randomUUID();
+      await env.DB.prepare(
+        `INSERT INTO click_events
+          (id, provider_key, provider_item_id, product_id, category_key, version_id, clicked_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
       )
-      .run();
-  } catch {
-    // 計測失敗でもリダイレクトは続行する（ユーザー体験を妨げない）
+        .bind(
+          id,
+          providerKey,
+          offer.provider_item_id,
+          offer.product_id,
+          offer.category_key,
+          offer.version_id,
+          new Date().toISOString()
+        )
+        .run();
+
+      // クリック時刻を記録（デュープ防止用）
+      await recordClickTimestamp(env, providerKey, offer.provider_item_id);
+    } catch {
+      // 計測失敗でもリダイレクトは続行する（ユーザー体験を妨げない）
+    }
   }
 
   void request;

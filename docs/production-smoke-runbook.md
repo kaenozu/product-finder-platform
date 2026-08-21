@@ -19,6 +19,21 @@ No step in this document writes Production D1, publishes a catalog, changes Secr
    - application rollback SHA
    - active catalog version ID and status
 
+## Cron trigger read-back
+
+After deploying the cron Worker, verify the trigger configuration:
+
+```bash
+# Production cron trigger の read-back
+wrangler triggers list --config wrangler.cron.jsonc
+```
+
+Expected output:
+
+- Trigger: `0 3 * * *` (UTC 03:00 = JST 12:00 noon)
+
+If the trigger differs from `wrangler.cron.jsonc`, do not proceed with the release. The cron schedule must match the checked-in configuration.
+
 ## Deploy gate
 
 The deploy workflow must verify the exact SHA, run build/quality checks, and fail closed if the expected SHA is not the default branch HEAD. A deploy run with no post-deploy report is **not verified**.

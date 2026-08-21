@@ -36,12 +36,27 @@ export interface IngestSummary {
   errorSummary?: string;
 }
 
+function canonicalizeValue(value: unknown): unknown {
+  if (value === null || value === undefined) return value;
+  if (typeof value !== "object") return value;
+  if (Array.isArray(value)) return value.map(canonicalizeValue);
+  const sorted: Record<string, unknown> = {};
+  for (const key of Object.keys(value as Record<string, unknown>).sort()) {
+    sorted[key] = canonicalizeValue((value as Record<string, unknown>)[key]);
+  }
+  return sorted;
+}
+
 /**
  * 商品+オファーの内容ハッシュ（順序・タイムスタンプに依存しない安定ハッシュで no-op 判定する）。
  * 内容が実質的に変わらない限り再取り込みをスキップできるように、
  * ingestedAt / sourceUpdatedAt / updatedAt はハッシュ対象から除外する。
+ *
+ * 32-bit FNV から SHA-256 へ移行済み。値は `sha256:<hex>` 形式。
+ * 旧 FNV 形式（`sha256:` プレフィックスなしの短いhex）は後方互換のため
+ * 毎回 mismatch として扱い、移行初回に1回だけ publish される。
  */
-export function contentHash(products: CatalogProduct[], offers: unknown[]): string {
+export async function contentHash(products: CatalogProduct[], offers: unknown[]): Promise<string> {
   const canonicalProducts = [...products]
     .sort((a, b) => a.productId.localeCompare(b.productId))
     .map((p) => ({
@@ -50,7 +65,7 @@ export function contentHash(products: CatalogProduct[], offers: unknown[]): stri
       manufacturer: p.manufacturer,
       model: p.model,
       displayName: p.displayName,
-      specs: p.specs,
+      specs: canonicalizeValue(p.specs),
       referencePriceYen: p.referencePriceYen,
       availability: p.availability,
       sourceKey: p.sourceKey,
@@ -75,12 +90,20 @@ export function contentHash(products: CatalogProduct[], offers: unknown[]): stri
       availability: (o as { availability: string | null }).availability,
     }));
   const payload = JSON.stringify({ products: canonicalProducts, offers: canonicalOffers });
-  let h = 0x811c9dc5;
-  for (let i = 0; i < payload.length; i++) {
-    h ^= payload.charCodeAt(i);
-    h = Math.imul(h, 0x01000193);
-  }
-  return (h >>> 0).toString(16);
+  const data = new TextEncoder().encode(payload);
+  const digest = await crypto.subtle.digest("SHA-256", data);
+  const hex = Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+  return `sha256:${hex}`;
+}
+
+/**
+ * content_hash が旧 32-bit FNV 形式かどうかを判定する。
+ * 旧形式は `sha256:` プレフィックスを持たない短い hex 文字列。
+ */
+export function isLegacyHashFormat(hash: string): boolean {
+  return !hash.startsWith("sha256:");
 }
 
 /** module の代表回答から hard-match 回帰ゲートを組み立てる（回答なしmoduleはスキップ） */
@@ -134,7 +157,7 @@ export async function runIngest(
 
     const products = normalized.products as CatalogProduct[];
     const module = getModule(categoryKey);
-    const hash = contentHash(products, normalized.offers);
+    const hash = await contentHash(products, normalized.offers);
 
     // 前回公開版の商品数（version回帰ゲート用）
     const previousActiveVersion = await getActiveVersionId(db, categoryKey);
