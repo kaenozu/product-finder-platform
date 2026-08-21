@@ -28,6 +28,7 @@ export function BrandHome() {
     ? Math.max(...categories.map((category) => category.questionCount))
     : null;
   const preview = categories?.find((category) => category.copy.resultPreview)?.copy.resultPreview;
+  const onlyCategory = categories?.length === 1 ? categories[0] : undefined;
 
   return (
     <main>
@@ -50,9 +51,14 @@ export function BrandHome() {
           <span>無料・登録不要</span>
           <span>公式仕様を照合</span>
         </div>
-        {categories?.[0] && (
-          <a className="btn-primary hero-cta" href={`/${categories[0].categoryKey}`}>
-            数問でおすすめを見る →
+        {onlyCategory && (
+          <a className="btn-primary hero-cta" href={`/${onlyCategory.categoryKey}`}>
+            {onlyCategory.copy.appTitle}を始める →
+          </a>
+        )}
+        {categories && categories.length > 1 && (
+          <a className="btn-primary hero-cta" href="#category-heading">
+            カテゴリを選んで診断する →
           </a>
         )}
       </section>
