@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { CLICK_RETENTION_DAYS, cleanupExpiredClicks } from "../../src/worker/click-retention";
+import {
+  CLICK_RETENTION_DAYS,
+  cleanupExpiredClicks,
+  isDuplicateClick,
+  recordClickTimestamp,
+} from "../../src/worker/click-retention";
 
 type QueryResult = { results: Array<{ id: string }> };
 
@@ -52,5 +57,68 @@ describe("click event retention", () => {
     const result = await cleanupExpiredClicks({ DB: db });
 
     expect(result).toEqual({ deleted: 1000, errors: 0, hasMore: true });
+  });
+});
+
+describe("per-user click dedup", () => {
+  function makeKvStore() {
+    const store = new Map<string, { value: string; ttl?: number }>();
+    return {
+      store,
+      async get(key: string) {
+        return store.get(key)?.value ?? null;
+      },
+      async put(key: string, value: string, opts?: { expirationTtl?: number }) {
+        store.set(key, { value, ttl: opts?.expirationTtl });
+      },
+    } as unknown as KVNamespace & { store: typeof store };
+  }
+
+  function makeRequest(ip = "1.2.3.4", ua = "TestBrowser/1.0") {
+    return new Request("http://localhost/go/rakuten/token", {
+      headers: {
+        "cf-connecting-ip": ip,
+        "user-agent": ua,
+      },
+    });
+  }
+
+  it("同一ユーザー同一offerの連続クリックはデュープ扱い", async () => {
+    const kv = makeKvStore();
+    const req = makeRequest();
+
+    expect(await isDuplicateClick({ KV: kv } as never, "rakuten", "item-1", req)).toBe(false);
+    await recordClickTimestamp({ KV: kv } as never, "rakuten", "item-1", req);
+    expect(await isDuplicateClick({ KV: kv } as never, "rakuten", "item-1", req)).toBe(true);
+  });
+
+  it("異なるユーザー同一offerはデュープ扱いしない", async () => {
+    const kv = makeKvStore();
+    const reqA = makeRequest("1.1.1.1", "BrowserA");
+    const reqB = makeRequest("2.2.2.2", "BrowserB");
+
+    expect(await isDuplicateClick({ KV: kv } as never, "rakuten", "item-1", reqA)).toBe(false);
+    await recordClickTimestamp({ KV: kv } as never, "rakuten", "item-1", reqA);
+    // 異なるIP+UA → 異なるフィンガープリント → デュープしない
+    expect(await isDuplicateClick({ KV: kv } as never, "rakuten", "item-1", reqB)).toBe(false);
+  });
+
+  it("同一ユーザーでも異なるofferはデュープ扱いしない", async () => {
+    const kv = makeKvStore();
+    const req = makeRequest();
+
+    await recordClickTimestamp({ KV: kv } as never, "rakuten", "item-1", req);
+    expect(await isDuplicateClick({ KV: kv } as never, "rakuten", "item-2", req)).toBe(false);
+  });
+
+  it("KV障害時はデュープチェックをスキップ", async () => {
+    const brokenKv = {
+      async get() {
+        throw new Error("KV down");
+      },
+    } as unknown as KVNamespace;
+    const req = makeRequest();
+
+    expect(await isDuplicateClick({ KV: brokenKv } as never, "rakuten", "item-1", req)).toBe(false);
   });
 });
