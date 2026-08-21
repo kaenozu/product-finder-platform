@@ -169,25 +169,6 @@ export async function handleReady(env: Env): Promise<Response> {
   );
 }
 
-export async function handleDataHealth(env: Env): Promise<Response> {
-  const allCategories = await Promise.all(
-    listModules().map(async (categoryKey) => {
-      const [readiness, health] = await Promise.all([
-        getCatalogReadiness(env.DB, categoryKey),
-        getIngestHealth(env.DB, categoryKey),
-      ]);
-      const { categoryKey: _, ...healthFields } = health;
-      return {
-        categoryKey,
-        published: readiness.activeVersionStatus === "published" && readiness.productCount > 0,
-        productCount: readiness.productCount,
-        ...healthFields,
-      };
-    })
-  );
-  return json({ ok: true, categories: allCategories });
-}
-
 export async function handleConfig(request: Request): Promise<Response> {
   const url = new URL(request.url);
   const requested = url.searchParams.get("category") ?? undefined;
