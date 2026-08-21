@@ -53,7 +53,12 @@ export function ResultScreen({ result, copy, onRestart, onEditAnswers }: Props) 
             {result.matchedCount > result.candidates.length
               ? `上位${result.candidates.length}件を表示しています。`
               : ""}{" "}
-            {result.status === "partial" && "すべての質問に答えるとより正確です。"}
+            {result.status === "partial" &&
+              "すべての質問に答えると、回答条件との比較材料が増えます。"}
+          </p>
+          <p className="score-note">
+            商品仕様は公式情報を照合しています。順位は、その仕様と回答条件を運営側の評価ルールで
+            相対的に点数化したものです。表示される一致度は確率や正解率ではありません。
           </p>
           <div className="candidates">
             {result.candidates.map((c, i) => (

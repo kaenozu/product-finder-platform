@@ -1,15 +1,11 @@
 import type { EvaluateResponse } from "../lib/api";
+import { matchPercent, SCORE_DISCLOSURE } from "../lib/score-display";
 import "./LiveCandidates.css";
 
 interface Props {
   result: EvaluateResponse | null;
   loading: boolean;
   onOpen: () => void;
-}
-
-function matchPercent(totalScore: number, maxScore: number): number {
-  if (maxScore <= 0) return 0;
-  return Math.round((totalScore / maxScore) * 100);
 }
 
 export function LiveCandidates({ result, loading, onOpen }: Props) {
@@ -43,7 +39,7 @@ export function LiveCandidates({ result, loading, onOpen }: Props) {
         result && (
           <>
             <p className="live-candidates-note">
-              暫定ランキングです。回答を続けると候補と順位が自動で更新されます。
+              暫定ランキングです。{SCORE_DISCLOSURE}回答を続けると候補と順位が自動で更新されます。
             </p>
             <ol className="live-candidate-list">
               {result.candidates.slice(0, 3).map((candidate, index) => (

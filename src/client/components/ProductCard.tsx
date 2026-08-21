@@ -1,4 +1,5 @@
 import type { CandidateResponse } from "../lib/api";
+import { matchPercent, SCORE_DISCLOSURE } from "../lib/score-display";
 import { AFFILIATE_REL } from "./AffiliateNote";
 
 /** 商品画像は Worker の /img プロキシを経由して取得する
@@ -68,11 +69,6 @@ function formatDate(value: string | undefined | null): string | null {
   return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
 }
 
-function matchPercent(totalScore: number, maxScore: number): number {
-  if (maxScore <= 0) return 0;
-  return Math.round((totalScore / maxScore) * 100);
-}
-
 export function ProductCard({ candidate, rank, maxScore, scoreLabels, expanded, onToggle }: Props) {
   const { product, sources, reasons, weakPoints, totalScore, scoreBreakdown, specItems } =
     candidate;
@@ -98,7 +94,7 @@ export function ProductCard({ candidate, rank, maxScore, scoreLabels, expanded, 
         </div>
       </div>
 
-      {top && <p className="score-note">回答条件をスコア化した目安です。</p>}
+      {top && <p className="score-note">{SCORE_DISCLOSURE}</p>}
 
       {product.imageUrl && (
         <div className="product-image">
