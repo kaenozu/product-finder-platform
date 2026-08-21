@@ -20,6 +20,29 @@ describe("worker routing and request boundaries", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("access-control-allow-origin")).toBe("*");
     expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(response.headers.get("content-security-policy")).toContain("default-src 'self'");
+    expect(response.headers.get("content-security-policy")).toContain("frame-ancestors 'none'");
+    expect(response.headers.get("referrer-policy")).toBe("strict-origin-when-cross-origin");
+    expect(response.headers.get("permissions-policy")).toBe(
+      "camera=(), geolocation=(), microphone=()"
+    );
+    expect(response.headers.get("x-frame-options")).toBe("DENY");
+  });
+
+  it("画像プロキシにも共通security headerを付与する", async () => {
+    const response = await worker.fetch(
+      new Request(
+        "http://localhost/img?url=" +
+          encodeURIComponent("https://malicious.example.com/blocked.png")
+      ),
+      workerEnv
+    );
+
+    expect(response.status).toBe(403);
+    expect(response.headers.get("content-security-policy")).toContain(
+      "img-src 'self' data: https:"
+    );
+    expect(response.headers.get("x-frame-options")).toBe("DENY");
   });
 
   it("公開カタログ未投入時はreadyを503で返し、診断の空結果と区別する", async () => {
