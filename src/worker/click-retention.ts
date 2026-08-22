@@ -2,15 +2,36 @@
  * click_events の retention/集約/削除ポリシー。
  *
  * - click_events は無制限に増加しないよう retention を設ける
- * - bot による重複クリックをデュープ（同一 token + 短時間 window）
+ * - ユーザー単位の重複クリックをデュープ（同一 user fingerprint + 短時間 window）
  * - 集約: 日次集計テーブルへ集約し、raw データは保持期限後に削除
  *
  * 受入条件:
  * - click分析用途のイベントと機械的アクセスを分離
  * - retention処理がactive redirectや既存分析を壊さない
  * - click_events の無制限増加を防ぐ
+ * - 異なるユーザーの正当クリックをデュープしない
  */
 import type { Env } from "./env";
+
+// ──────────────────────────────────────────────
+// User fingerprint (privacy-preserving)
+// ──────────────────────────────────────────────
+
+/**
+ * ユーザーフィンガープリントを生成する。
+ * IP + User-Agent を SHA-256 でハッシュし、
+ * 個人を特定できないよう設計しつつ同一ユーザーの重複検出は可能にする。
+ */
+async function userFingerprint(request: Request): Promise<string> {
+  const ip = request.headers.get("cf-connecting-ip") ?? "unknown";
+  const ua = request.headers.get("user-agent") ?? "unknown";
+  const data = new TextEncoder().encode(`${ip}:${ua}`);
+  const hash = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(hash))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("")
+    .slice(0, 16); // 16 chars = 64bit十分
+}
 
 // ──────────────────────────────────────────────
 // Retention policy
@@ -33,7 +54,7 @@ export const CLICK_DEDUP_WINDOW_MS = 5_000;
 // ──────────────────────────────────────────────
 
 /**
- * 直近の同一 token へのクリックがデュープ防止窓内にあるか判定する。
+ * 直近の同一ユーザー同一tokenへのクリックがデュープ防止窓内にあるか判定する。
  * KV を使って直近のクリック時刻を保存する。
  *
  * @returns true = デュープ（記録しない）、false = 新規（記録する）
@@ -41,9 +62,11 @@ export const CLICK_DEDUP_WINDOW_MS = 5_000;
 export async function isDuplicateClick(
   env: Env,
   providerKey: string,
-  providerItemId: string
+  providerItemId: string,
+  request: Request
 ): Promise<boolean> {
-  const key = `click_dedup:${providerKey}:${providerItemId}`;
+  const fingerprint = await userFingerprint(request);
+  const key = `click_dedup:${fingerprint}:${providerKey}:${providerItemId}`;
 
   try {
     const lastClick = await env.KV?.get(key, "text");
@@ -69,9 +92,11 @@ export async function isDuplicateClick(
 export async function recordClickTimestamp(
   env: Env,
   providerKey: string,
-  providerItemId: string
+  providerItemId: string,
+  request: Request
 ): Promise<void> {
-  const key = `click_dedup:${providerKey}:${providerItemId}`;
+  const fingerprint = await userFingerprint(request);
+  const key = `click_dedup:${fingerprint}:${providerKey}:${providerItemId}`;
   const now = Date.now();
 
   try {

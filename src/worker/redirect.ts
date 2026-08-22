@@ -68,8 +68,8 @@ export async function handleRedirect(
     return json({ error: "redirect_not_found" }, { status: 404 });
   }
 
-  // Bot detection and dedup check
-  const isDup = await isDuplicateClick(env, providerKey, offer.provider_item_id);
+  // Bot detection and dedup check (per-user fingerprint)
+  const isDup = await isDuplicateClick(env, providerKey, offer.provider_item_id, request);
 
   // デュープでない場合のみクリックを記録
   if (!isDup) {
@@ -92,12 +92,11 @@ export async function handleRedirect(
         .run();
 
       // クリック時刻を記録（デュープ防止用）
-      await recordClickTimestamp(env, providerKey, offer.provider_item_id);
+      await recordClickTimestamp(env, providerKey, offer.provider_item_id, request);
     } catch {
       // 計測失敗でもリダイレクトは続行する（ユーザー体験を妨げない）
     }
   }
 
-  void request;
   return Response.redirect(outboundUrl.href, 302);
 }
