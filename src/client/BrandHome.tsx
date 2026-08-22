@@ -53,7 +53,7 @@ export function BrandHome() {
         </div>
         {onlyCategory && (
           <a className="btn-primary hero-cta" href={`/${onlyCategory.categoryKey}`}>
-            {onlyCategory.copy.appTitle}を始める →
+            {onlyCategory.copy.appTitle}の診断内容を見る →
           </a>
         )}
         {categories && categories.length > 1 && (
@@ -126,7 +126,7 @@ export function BrandHome() {
               <span className="category-facts">
                 最大{category.questionCount}問 · 無料・登録不要
               </span>
-              <span className="category-cta">数問でおすすめを見る →</span>
+              <span className="category-cta">この診断の内容を見る →</span>
             </a>
           ))}
         </div>
