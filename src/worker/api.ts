@@ -6,6 +6,7 @@ import type { CatalogProduct, ProductOffer, AnswerRecord } from "../shared/domai
 import {
   getActiveProductById,
   getCatalogReadiness,
+  getIngestHealth,
   listActiveProducts,
   listOffersForProducts,
 } from "./repo/catalog";
@@ -119,6 +120,13 @@ export async function handleCategories(env: Env): Promise<Response> {
  * - deployed: active catalog が存在するか（未デプロイ = rollout 中）
  * - published: active catalog が published かつ productCount > 0
  */
+interface DataHealth {
+  lastIngestStatus: string | null;
+  lastIngestFinishedAt: string | null;
+  lastSourceUpdatedAt: string | null;
+  consecutiveFailures: number;
+}
+
 interface CategoryReadiness {
   categoryKey: string;
   enabled: boolean;
@@ -126,6 +134,7 @@ interface CategoryReadiness {
   published: boolean;
   activeVersionStatus: string | null;
   productCount: number;
+  dataHealth: DataHealth;
 }
 
 /**
@@ -140,7 +149,10 @@ export async function handleReady(env: Env): Promise<Response> {
   const enabledKeys = getEnabledCategories(env);
   const allCategories = await Promise.all(
     listModules().map(async (categoryKey) => {
-      const readiness = await getCatalogReadiness(env.DB, categoryKey);
+      const [readiness, health] = await Promise.all([
+        getCatalogReadiness(env.DB, categoryKey),
+        getIngestHealth(env.DB, categoryKey),
+      ]);
       const published = readiness.activeVersionStatus === "published" && readiness.productCount > 0;
       const deployed = readiness.activeVersionId !== null;
       return {
@@ -150,6 +162,12 @@ export async function handleReady(env: Env): Promise<Response> {
         published,
         activeVersionStatus: readiness.activeVersionStatus,
         productCount: readiness.productCount,
+        dataHealth: {
+          lastIngestStatus: health.lastIngestStatus,
+          lastIngestFinishedAt: health.lastIngestFinishedAt,
+          lastSourceUpdatedAt: health.lastSourceUpdatedAt,
+          consecutiveFailures: health.consecutiveFailures,
+        },
       } satisfies CategoryReadiness;
     })
   );

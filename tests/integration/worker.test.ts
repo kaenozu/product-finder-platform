@@ -388,7 +388,31 @@ describe("readiness and category rollout", () => {
     const envEmpty = { ...workerEnv, ENABLED_CATEGORIES: "" } as Env;
     const response = await worker.fetch(new Request("http://localhost/api/ready"), envEmpty);
     const body = (await response.json()) as { ok: boolean };
-    // 全カテゴリ無効 → deployableCategories が空 → ready (互換性)
+    // 全カテゴリ無効 → deployableCategoriesが空 → ready (互換性)
     expect(body.ok).toBe(true);
+  });
+
+  it("readinessがカテゴリごとのingest healthを返す", async () => {
+    const response = await worker.fetch(new Request("http://localhost/api/ready"), workerEnv);
+    const body = (await response.json()) as {
+      categories: Array<{
+        dataHealth: {
+          lastIngestStatus: string | null;
+          lastIngestFinishedAt: string | null;
+          lastSourceUpdatedAt: string | null;
+          consecutiveFailures: number;
+        };
+      }>;
+    };
+
+    expect(body.categories.length).toBeGreaterThan(0);
+    for (const category of body.categories) {
+      expect(category.dataHealth).toEqual(
+        expect.objectContaining({ consecutiveFailures: expect.any(Number) })
+      );
+      expect(category.dataHealth).toHaveProperty("lastIngestStatus");
+      expect(category.dataHealth).toHaveProperty("lastIngestFinishedAt");
+      expect(category.dataHealth).toHaveProperty("lastSourceUpdatedAt");
+    }
   });
 });
