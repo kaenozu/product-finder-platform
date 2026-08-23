@@ -13,6 +13,8 @@ import {
   listOffersForProducts,
   getActiveVersionId,
   pruneOldVersions,
+  createIngestRun,
+  reconcileStaleIngestRuns,
 } from "../../src/worker/repo/catalog";
 import { runIngest } from "../../src/worker/ingest/run";
 import { ManualRiceCookerAdapter } from "../../src/worker/adapters/manual";
@@ -558,5 +560,109 @@ describe("API handlers（D1連動）", () => {
     const disabledEnv = { ...workerEnv, ENABLED_CATEGORIES: "" } as Env;
     const res = await handleProductDetail(disabledEnv, "panasonic-sr-x910e");
     expect(res.status).toBe(404);
+  });
+});
+
+describe("reconcileStaleIngestRuns", () => {
+  beforeEach(async () => {
+    await db().exec(
+      "DELETE FROM product_offers; DELETE FROM products; DELETE FROM catalog_versions; DELETE FROM catalog_state; DELETE FROM ingest_runs;"
+    );
+  });
+
+  it("running ingestion で candidate_version が active なら succeeded に修正", async () => {
+    await ensureCatalogState(db(), CATEGORY);
+    const p = makeProduct("p-rec-1");
+    const vId = await createStagingVersion(db(), CATEGORY, "test", 1);
+    await insertProducts(db(), vId, [p]);
+    await setVersionStatus(db(), vId, "valid");
+    await publishVersion(db(), CATEGORY, vId);
+
+    // 60分前に作成したrunning run（candidate = active version）
+    const runId = await createIngestRun(
+      db(),
+      "test",
+      CATEGORY,
+      new Date(Date.now() - 60 * 60 * 1000)
+    );
+    await db()
+      .prepare(`UPDATE ingest_runs SET candidate_version = ? WHERE run_id = ?`)
+      .bind(vId, runId)
+      .run();
+
+    const reconciled = await reconcileStaleIngestRuns(db(), 30);
+    expect(reconciled).toContain(runId);
+
+    const row = await db()
+      .prepare(`SELECT status, error_summary FROM ingest_runs WHERE run_id = ?`)
+      .bind(runId)
+      .first<{ status: string; error_summary: string | null }>();
+    expect(row!.status).toBe("succeeded");
+    expect(row!.error_summary).toContain("audit was lost");
+  });
+
+  it("running ingestion で candidate が non-active なら failed に修正", async () => {
+    await ensureCatalogState(db(), CATEGORY);
+    const p = makeProduct("p-rec-2");
+    const vId = await createStagingVersion(db(), CATEGORY, "test", 1);
+    await insertProducts(db(), vId, [p]);
+    await setVersionStatus(db(), vId, "valid");
+    // publishしない = candidate_versionはactiveでない
+
+    const runId = await createIngestRun(
+      db(),
+      "test",
+      CATEGORY,
+      new Date(Date.now() - 60 * 60 * 1000)
+    );
+    await db()
+      .prepare(`UPDATE ingest_runs SET candidate_version = ? WHERE run_id = ?`)
+      .bind(vId, runId)
+      .run();
+
+    const reconciled = await reconcileStaleIngestRuns(db(), 30);
+    expect(reconciled).toContain(runId);
+
+    const row = await db()
+      .prepare(`SELECT status FROM ingest_runs WHERE run_id = ?`)
+      .bind(runId)
+      .first<{ status: string }>();
+    expect(row!.status).toBe("failed");
+  });
+
+  it("candidate_version がない running run は failed に修正", async () => {
+    const runId = await createIngestRun(
+      db(),
+      "test",
+      CATEGORY,
+      new Date(Date.now() - 60 * 60 * 1000)
+    );
+
+    const reconciled = await reconcileStaleIngestRuns(db(), 30);
+    expect(reconciled).toContain(runId);
+
+    const row = await db()
+      .prepare(`SELECT status FROM ingest_runs WHERE run_id = ?`)
+      .bind(runId)
+      .first<{ status: string }>();
+    expect(row!.status).toBe("failed");
+  });
+
+  it("30分以内の running run はreconcile対象外", async () => {
+    const runId = await createIngestRun(
+      db(),
+      "test",
+      CATEGORY,
+      new Date(Date.now() - 5 * 60 * 1000) // 5分前
+    );
+
+    const reconciled = await reconcileStaleIngestRuns(db(), 30);
+    expect(reconciled).not.toContain(runId);
+
+    const row = await db()
+      .prepare(`SELECT status FROM ingest_runs WHERE run_id = ?`)
+      .bind(runId)
+      .first<{ status: string }>();
+    expect(row!.status).toBe("running");
   });
 });

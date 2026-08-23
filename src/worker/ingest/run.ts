@@ -255,13 +255,23 @@ export async function runIngest(
       };
     }
 
-    await finishIngestRun(db, runId, "succeeded", now, {
-      fetchedCount: fetched.meta.fetchedCount,
-      normalizedCount: normalized.products.length,
-      rejectedCount: normalized.rejectedCount,
-      candidateVersion: versionId,
-      contentHash: hash,
-    });
+    // catalogは既にpublish済み。finishIngestRun失敗はaudit損失であって
+    // serving integrityの問題ではないため、gracefulに処理する。
+    try {
+      await finishIngestRun(db, runId, "succeeded", now, {
+        fetchedCount: fetched.meta.fetchedCount,
+        normalizedCount: normalized.products.length,
+        rejectedCount: normalized.rejectedCount,
+        candidateVersion: versionId,
+        contentHash: hash,
+      });
+    } catch (auditError) {
+      // audit更新失敗はlogするが、publish済みcatalogのservingには影響しない。
+      // reconcileStaleIngestRuns() が後から回復する。
+      console.error(
+        `[ingest] post-publish audit failed run=${runId} category=${categoryKey}: ${String(auditError)}`
+      );
+    }
 
     // 非公開の古いstaging/rejectedバージョンを整理（最新2件まで残す）
     try {
@@ -281,12 +291,17 @@ export async function runIngest(
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    await finishIngestRun(db, runId, "failed", now, {
-      fetchedCount: 0,
-      normalizedCount: 0,
-      rejectedCount: 0,
-      errorSummary: message,
-    });
+    // finishIngestRun自体が失敗してもservingに影響しない。
+    try {
+      await finishIngestRun(db, runId, "failed", now, {
+        fetchedCount: 0,
+        normalizedCount: 0,
+        rejectedCount: 0,
+        errorSummary: message,
+      });
+    } catch (auditError) {
+      console.error(`[ingest] audit update failed run=${runId}: ${String(auditError)}`);
+    }
     return {
       runId,
       status: "failed",
