@@ -127,20 +127,17 @@ X-RateLimit-Remaining: 0
 X-RateLimit-Reset: 1692633600
 ```
 
-## Bot Detection
+## Bot 対策
 
-### パターン
+### 現状の方針
 
-User-Agent ヘッダーで以下のパターンを検出:
-
-- `HeadlessChrome`, `HeadlessFirefox`
-- `bot`, `crawler`, `spider`, `scraper`
-- `curl`, `wget`, `python-requests`, `go-http-client`
+- アプリケーション内のUAパターン判定は実装しない（以前の `isLikelyBot` はどの経路からも呼ばれない死蔵コードだったため削除済み）。
+- bot対策は **rate limit（KV固定窓）+ click dedup（5秒窓）** と、Cloudflare WAF の edge 側ルール（下記）で担う。
 
 ### 注意事項
 
-- IP/UA を保存しないため、判定結果はログ出力のみ
-- click_events テーブルには影響させない（プライバシー最小化）
+- IP/UA を保存しない（プライバシー最小化）。click_events には商品・バージョン・時刻のみ記録する。
+- KV障害時のrate limitは可用性優先でfail-open（通過させる）一方、KV binding不在の設定不整合は503でfail-closedする。この思想の違いは意図的。
 
 ## 監視
 

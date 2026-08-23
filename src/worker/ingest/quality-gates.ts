@@ -54,12 +54,12 @@ export function uniquenessGate(products: CatalogProduct[]): QualityGateResult {
 
 /**
  * gate 6: hard-condition-regression —
- * 代表的な診断条件で必ず1件以上マッチすること（カタログの劣化を防ぐ）
+ * 代表的な診断条件で必ず1件以上マッチすること（カタログの劣化を防ぐ）。
  */
-export function hardConditionRegressionGate(
-  products: CatalogProduct[],
-  hardMatch: (p: CatalogProduct, criteria: unknown) => { pass: boolean },
-  sampleCriteria: unknown[]
+export function hardConditionRegressionGate<P extends CatalogProduct, C>(
+  products: P[],
+  hardMatch: (p: P, criteria: C) => { pass: boolean },
+  sampleCriteria: C[]
 ): QualityGateResult {
   const fails: string[] = [];
   sampleCriteria.forEach((criteria, i) => {

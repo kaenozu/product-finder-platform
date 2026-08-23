@@ -299,6 +299,13 @@ h4 {
   box-shadow: var(--shadow-hover);
 }
 
+/* 戻った際にどれを選んでいたか分かるようにする（aria-pressedと対） */
+.option.selected {
+  border-color: var(--accent-fill);
+  background: color-mix(in srgb, var(--accent-fill) 10%, var(--surface));
+  box-shadow: inset 0 0 0 1px var(--accent-fill);
+}
+
 .option-label {
   font-weight: 600;
   font-size: 1rem;

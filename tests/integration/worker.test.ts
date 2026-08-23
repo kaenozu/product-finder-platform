@@ -39,9 +39,7 @@ describe("worker routing and request boundaries", () => {
     );
 
     expect(response.status).toBe(403);
-    expect(response.headers.get("content-security-policy")).toContain(
-      "img-src 'self' data: https:"
-    );
+    expect(response.headers.get("content-security-policy")).toContain("img-src 'self' data:");
     expect(response.headers.get("x-frame-options")).toBe("DENY");
   });
 
@@ -176,11 +174,11 @@ describe("worker routing and request boundaries", () => {
     });
   });
 
-  it("category未指定のconfigは後方互換でdefaultカテゴリを返す", async () => {
+  it("category未指定のconfigは400 missing_category（暗黙fallback廃止）", async () => {
     const response = await worker.fetch(new Request("http://localhost/api/config"), workerEnv);
 
-    expect(response.status).toBe(200);
-    expect((await response.json()) as unknown).toMatchObject({ categoryKey: "rice-cooker" });
+    expect(response.status).toBe(400);
+    expect((await response.json()) as unknown).toEqual({ error: "missing_category" });
   });
 });
 
@@ -342,12 +340,20 @@ describe("readiness and category rollout", () => {
   });
 
   it("RATE_LIMIT_BYPASS=1でrate limit対象endpointが通過する", async () => {
+    // rate limit対象の /api/diagnosis/evaluate。回答不足はcatalog非依存で400になるため
+    // bypass経由でゲートを通過したこと（503 rate_limit_unavailableにならないこと）を検証できる。
     const response = await worker.fetch(
-      new Request("http://localhost/go/rakuten/nonexistent"),
+      new Request("http://localhost/api/diagnosis/evaluate", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ categoryKey: "rice-cooker", answers: { cookVolume: "3" } }),
+      }),
       workerEnv
     );
-    // bypassありなので503にはならない（404 or 400）
-    expect(response.status).not.toBe(503);
+    // bypassありなのでrate limit起因の503にはならない（回答不足の400）
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { error: string };
+    expect(body.error).toBe("insufficient_answers");
   });
 
   it("enabled+未deployedカテゴリはreadinessをblockしない", async () => {

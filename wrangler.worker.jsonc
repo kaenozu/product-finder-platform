@@ -16,9 +16,8 @@
       "migrations_dir": "migrations",
     },
   ],
-  "triggers": {
-    "crons": ["0 3 * * *"],
-  },
+  // cron trigger は product-finder-platform-cron（wrangler.cron.jsonc）が単一の所有者。
+  // ここで重複宣言すると日次ingestが2 Workerで二重実行されるため、意図的に持たせない。
   "observability": {
     "enabled": true,
   },

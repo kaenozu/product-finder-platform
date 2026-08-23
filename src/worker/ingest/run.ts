@@ -13,8 +13,8 @@ import {
   setVersionStatus,
   publishVersion,
 } from "../repo/catalog";
-import type { CatalogProduct, CategoryModule } from "../../shared/domain/types";
-import { getModule } from "../../shared/domain/registry";
+import type { CatalogProduct } from "../../shared/domain/types";
+import { getModule, type AnyCategoryModule } from "../../shared/domain/registry";
 import {
   countGate,
   freshnessGate,
@@ -106,20 +106,61 @@ export function isLegacyHashFormat(hash: string): boolean {
   return !hash.startsWith("sha256:");
 }
 
+/**
+ * 汎用行をmodule.parseProductで検証し、カテゴリ型へ窄める。
+ * 1件でも検証に失敗した場合はtyped=nullを返す（ゲートでfailにする）。
+ */
+function validateTypedProducts(
+  module: AnyCategoryModule,
+  products: CatalogProduct[]
+): { typed: unknown[]; invalidIds: string[] } {
+  const typed: unknown[] = [];
+  const invalidIds: string[] = [];
+  for (const p of products) {
+    const narrowed = module.parseProduct(p);
+    if (narrowed === null) {
+      invalidIds.push(p.productId);
+    } else {
+      typed.push(narrowed);
+    }
+  }
+  return { typed, invalidIds };
+}
+
+/**
+ * parseProductでの全件検証済みであることを前提に、モジュール固有のP型へ窄める
+ * ための唯一のアサーション点。呼び出し前にvalidateTypedProductsで全件合格していること。
+ */
+function asValidated<P>(validated: unknown[]): P[] {
+  return validated as P[];
+}
+
 /** module の代表回答から hard-match 回帰ゲートを組み立てる（回答なしmoduleはスキップ） */
 function buildHardMatchRegressionGates(
-  module: CategoryModule<unknown, CatalogProduct>,
+  module: AnyCategoryModule,
   products: CatalogProduct[]
 ): QualityGateResult[] {
   if (!module.regressionSampleAnswers || module.regressionSampleAnswers.length === 0) {
     return [];
   }
+  const { typed, invalidIds } = validateTypedProducts(module, products);
+  if (invalidIds.length > 0) {
+    return [
+      {
+        name: "product-type",
+        pass: false,
+        message: `回帰ゲート実行前にカテゴリ型検証に失敗: ${invalidIds.join(", ")}`,
+      },
+    ];
+  }
   const sampleCriteria = module.regressionSampleAnswers.map((answers) =>
     module.deriveCriteria(answers)
   );
+  type ProductOf = Parameters<typeof module.hardMatch>[0];
+  const typedProducts = asValidated<ProductOf>(typed);
   return [
     hardConditionRegressionGate(
-      products,
+      typedProducts,
       (p, criteria) => module.hardMatch(p, criteria),
       sampleCriteria
     ),
@@ -128,16 +169,28 @@ function buildHardMatchRegressionGates(
 
 /** カテゴリ固有ゲートを products（共通ベース型）に適用する */
 function moduleQualityGates(
-  module: CategoryModule<unknown, CatalogProduct>,
+  module: AnyCategoryModule,
   products: CatalogProduct[]
 ): QualityGateResult[] {
   if (!module.qualityGates) return [];
-  return module.qualityGates(products as never);
+  const { typed, invalidIds } = validateTypedProducts(module, products);
+  if (invalidIds.length > 0) {
+    return [
+      {
+        name: "product-type",
+        pass: false,
+        message: `カテゴリ型に合わない商品がある: ${invalidIds.join(", ")}`,
+      },
+    ];
+  }
+  type ProductOf = Parameters<typeof module.qualityGates>[0][number];
+  return module.qualityGates(asValidated<ProductOf>(typed));
 }
 
 /**
- * データ統合パイプライン（プロンプト§6, §7）。
- * fetch → normalize → 品質ゲート7種 → staging → valid → publish を実行する。
+ * データ統合パイプライン。
+ * fetch → normalize → 品質ゲート（schema/count/uniqueness/product-type/カテゴリ固有/
+ * hard-condition回帰/version回帰/freshness）→ staging → valid → publish を実行する。
  * カテゴリ固有のゲート・回帰条件は module から取得し、汎用的に動作する。
  * ゲート失敗時は publish せず rejected で記録する（条件は自動緩和しない）。
  */

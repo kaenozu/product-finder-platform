@@ -2,6 +2,7 @@ import type { Env } from "./env";
 import { isDuplicateClick, recordClickTimestamp } from "./click-retention";
 import { json } from "./http";
 import { getEnabledCategories } from "./api";
+import { hasPublishedCatalog } from "./repo/catalog";
 
 /**
  * /go/:provider/:token — アフィリエイト遷移のリダイレクト。
@@ -39,6 +40,12 @@ export async function handleRedirect(
 
   const [offer] = offers.results ?? [];
   if (!offer || offers.results?.length !== 1) {
+    // カタログ欠損（一時障害）とoffer不存在を区別する（Issue #13）。
+    // published な active catalog が1つも無い場合は404ではなく503で応答する。
+    const enabledKeys = [...getEnabledCategories(env)];
+    if (!(await hasPublishedCatalog(env.DB, enabledKeys))) {
+      return json({ error: "catalog_unavailable" }, { status: 503 });
+    }
     return json({ error: "redirect_not_found" }, { status: 404 });
   }
 

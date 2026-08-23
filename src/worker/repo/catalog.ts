@@ -337,12 +337,60 @@ export async function getActiveProductById(
               p.specs_json, p.availability, p.source_key, p.source_updated_at, p.ingested_at,
               p.reference_price_yen
        FROM products p
-       JOIN catalog_state s ON s.active_version_id = p.version_id
+       JOIN catalog_state s ON s.active_version_id = p.version_id AND s.category_key = p.category_key
        WHERE p.category_key = ? AND p.product_id = ?`
     )
     .bind(categoryKey, productId)
     .first<ProductRow>();
   return row ? rowToProduct(row) : null;
+}
+
+/**
+ * 複数カテゴリのactive版からproductIdで商品を1件検索する（単一クエリ）。
+ * 複数カテゴリで同一productIdが衝突した場合は category_key 順で先頭を採用する
+ * （決定性は保証。productIdはカテゴリ横断で一意に運用すること）。
+ */
+export async function getActiveProductAcrossCategories(
+  db: D1Database,
+  categoryKeys: string[],
+  productId: string
+): Promise<CatalogProduct | null> {
+  if (categoryKeys.length === 0) return null;
+  const placeholders = categoryKeys.map(() => "?").join(",");
+  const row = await db
+    .prepare(
+      `SELECT p.product_id, p.category_key, p.manufacturer, p.model, p.display_name,
+              p.specs_json, p.availability, p.source_key, p.source_updated_at, p.ingested_at,
+              p.reference_price_yen
+       FROM products p
+       JOIN catalog_state s ON s.active_version_id = p.version_id AND s.category_key = p.category_key
+       WHERE p.product_id = ? AND p.category_key IN (${placeholders})
+       ORDER BY p.category_key
+       LIMIT 1`
+    )
+    .bind(productId, ...categoryKeys)
+    .first<ProductRow>();
+  return row ? rowToProduct(row) : null;
+}
+
+/** 指定カテゴリのいずれかに published な active catalog が存在するか（fail-closed判定用） */
+export async function hasPublishedCatalog(
+  db: D1Database,
+  categoryKeys: string[]
+): Promise<boolean> {
+  if (categoryKeys.length === 0) return false;
+  const placeholders = categoryKeys.map(() => "?").join(",");
+  const row = await db
+    .prepare(
+      `SELECT 1 AS ok
+       FROM catalog_state s
+       JOIN catalog_versions v ON v.version_id = s.active_version_id AND v.status = 'published'
+       WHERE s.category_key IN (${placeholders})
+       LIMIT 1`
+    )
+    .bind(...categoryKeys)
+    .first<{ ok: number }>();
+  return row !== null;
 }
 
 /** 特定バージョン・商品群のオファー一覧（カテゴリのactive版のみ） */
@@ -548,49 +596,54 @@ export async function reconcileStaleIngestRuns(
   staleMinutes = 30
 ): Promise<string[]> {
   const cutoff = new Date(Date.now() - staleMinutes * 60 * 1000);
+  // active versionをJOINで一括取得し、UPDATEは1バッチにまとめる（N+1回避）
   const stale = await db
     .prepare(
-      `SELECT ir.run_id, ir.candidate_version, ir.category_key
+      `SELECT ir.run_id, ir.candidate_version, s.active_version_id
        FROM ingest_runs ir
+       LEFT JOIN catalog_state s ON s.category_key = ir.category_key
        WHERE ir.status = 'running' AND ir.started_at < ?`
     )
     .bind(iso(cutoff))
-    .all<{ run_id: string; candidate_version: string | null; category_key: string }>();
+    .all<{ run_id: string; candidate_version: string | null; active_version_id: string | null }>();
 
+  const finishedAt = iso(new Date());
+  const statements: D1PreparedStatement[] = [];
   const reconciled: string[] = [];
+
   for (const run of stale.results ?? []) {
     if (!run.candidate_version) {
-      await db
-        .prepare(
-          `UPDATE ingest_runs SET status = 'failed', finished_at = ?,
-           error_summary = 'reconciled: no candidate version (stale running)'
-           WHERE run_id = ?`
-        )
-        .bind(iso(new Date()), run.run_id)
-        .run();
+      statements.push(
+        db
+          .prepare(
+            `UPDATE ingest_runs SET status = 'failed', finished_at = ?,
+             error_summary = 'reconciled: no candidate version (stale running)'
+             WHERE run_id = ?`
+          )
+          .bind(finishedAt, run.run_id)
+      );
       reconciled.push(run.run_id);
       continue;
     }
 
-    const active = await db
-      .prepare(`SELECT active_version_id FROM catalog_state WHERE category_key = ?`)
-      .bind(run.category_key)
-      .first<{ active_version_id: string | null }>();
-
-    const isActive = active?.active_version_id === run.candidate_version;
+    const isActive = run.active_version_id === run.candidate_version;
     const newStatus = isActive ? "succeeded" : "failed";
     const summary = isActive
       ? "reconciled: candidate is active version (audit was lost)"
       : "reconciled: candidate is not active version";
 
-    await db
-      .prepare(
-        `UPDATE ingest_runs SET status = ?, finished_at = ?, error_summary = ?
-         WHERE run_id = ?`
-      )
-      .bind(newStatus, iso(new Date()), summary, run.run_id)
-      .run();
+    statements.push(
+      db
+        .prepare(
+          `UPDATE ingest_runs SET status = ?, finished_at = ?, error_summary = ? WHERE run_id = ?`
+        )
+        .bind(newStatus, finishedAt, summary, run.run_id)
+    );
     reconciled.push(run.run_id);
+  }
+
+  if (statements.length > 0) {
+    await db.batch(statements);
   }
 
   return reconciled;

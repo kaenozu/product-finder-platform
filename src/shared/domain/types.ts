@@ -107,23 +107,40 @@ export interface CategoryCopy {
   };
 }
 
+/** 判定時コンテキスト。時刻に依存する評価（鮮度・発売年）を決定論的にテストするために時刻を注入できる */
+export interface EvaluationContext {
+  /** 判定基準時刻。省略時は呼び出し時刻（本番挙動） */
+  now?: Date;
+}
+
 /** カテゴリ固有モジュールの契約（プロンプト§7の想定インターフェース） */
 export interface CategoryModule<C, P extends CatalogProduct> {
   key: string;
   questions: QuestionDefinition[];
   deriveCriteria(answers: AnswerRecord): C;
-  canShowPartialResult(answers: AnswerRecord, criteria: C): boolean;
-  /** クライアントへ公開する暫定候補開始条件。判定ロジック自体はWorker側に保持する。 */
+  /** クライアントへ公開する暫定候補開始条件。判定はエンジン側で汎用的に行う */
   partialEligibility: {
     type: "answered_at_least";
     minAnswers: number;
   };
+  /** DB読み出し経路の汎用行をカテゴリ型へ検証込みで絞め込む。破損行はnull（呼び出し側が除外/503判定） */
+  parseProduct(raw: CatalogProduct): P | null;
   hardMatch(product: P, criteria: C): HardMatchResult;
-  score(product: P, criteria: C, offers?: ProductOffer[]): ScoreResult;
+  score(product: P, criteria: C, offers?: ProductOffer[], context?: EvaluationContext): ScoreResult;
   /** おすすめ理由（positive。スコア・条件に基づく） */
-  explain(product: P, criteria: C, offers?: ProductOffer[]): RecommendationReason[];
+  explain(
+    product: P,
+    criteria: C,
+    offers?: ProductOffer[],
+    context?: EvaluationContext
+  ): RecommendationReason[];
   /** 惜しい点（negative。条件から外れる点を正直に提示） */
-  weakPoints?(product: P, criteria: C, offers?: ProductOffer[]): RecommendationReason[];
+  weakPoints?(
+    product: P,
+    criteria: C,
+    offers?: ProductOffer[],
+    context?: EvaluationContext
+  ): RecommendationReason[];
   /** 未回答のうち、criteria導出に影響する質問キー */
   unansweredImportantKeys(answers: AnswerRecord): string[];
   /** 回答内容とカタログ全体に基づく追加の警告（例: 指定した機能を満たす商品が存在しない） */

@@ -1,5 +1,7 @@
 import type {
   AnswerRecord,
+  CatalogProduct,
+  EvaluationContext,
   HardMatchResult,
   ProductOffer,
   QualityGateReport,
@@ -7,9 +9,10 @@ import type {
   ScoreResult,
   SpecDisplayItem,
 } from "../types";
-import { BUDGET_BOUNDS, CURRENT_YEAR, INSTALL_WIDTH_MM } from "./types";
+import { BUDGET_BOUNDS, INSTALL_WIDTH_MM } from "./types";
 import { QUESTIONS, QUESTION_KEYS } from "./questions";
 import { activeQuestionKeys } from "../flow";
+import { riceCookerSpecsSchema } from "../../schema/rice-cooker";
 import type {
   HeatingMethod,
   HeatingPreference,
@@ -163,10 +166,21 @@ export function deriveCriteria(answers: AnswerRecord): RiceCookerCriteria {
   };
 }
 
-/** 途中推薦が可能か（容量などのハード条件が確定し、追加の条件が1つ以上ある時） */
-export function canShowPartialResult(answers: AnswerRecord, criteria: RiceCookerCriteria): boolean {
-  const answered = criteria.answeredKeys.length;
-  return answered >= 2;
+/**
+ * DB読み出し経路の汎用行を検証込みでカテゴリ型へ絞め込む。
+ * specs_json の破損・スキーマ不一致はnullとして返し、呼び出し側に判断を委ねる。
+ */
+export function parseProduct(raw: CatalogProduct): RiceCookerProduct | null {
+  if (raw.categoryKey !== "rice-cooker") return null;
+  const parsed = riceCookerSpecsSchema.safeParse(raw.specs);
+  if (!parsed.success) return null;
+  // categoryKeyは直上の等値チェックで"rice-cooker"に確定している
+  return { ...raw, categoryKey: "rice-cooker", specs: parsed.data };
+}
+
+/** 発売年・鮮度計算の基準年。実行時刻から導出する（年度定数のメンテ忘れを構造的に排除） */
+function referenceYear(context?: EvaluationContext): number {
+  return (context?.now ?? new Date()).getFullYear();
 }
 
 /**
@@ -212,7 +226,8 @@ export const OFFER_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
  *
  * - 鮮度切れ（7日超）の offer は「実売価格」として扱わない
  * - out_of_stock の offer は価格として使用しない
- * - priceMinor は JPY で 1:1（1 priceMinor = 1 円）
+ * - priceMinor は JPY の補助通貨単位（1 priceMinor = 0.01円 = 円×100）。
+ *   currency が JPY 以外の offer は単位換算を誤るため価格として使用しない
  * - 価格データが無い間は予算スコアを中立に保ち、不当に上下させない
  */
 function effectivePriceYen(
@@ -223,6 +238,7 @@ function effectivePriceYen(
   if (offers && offers.length > 0) {
     const cutoff = now.getTime() - OFFER_MAX_AGE_MS;
     const prices = offers
+      .filter((o) => o.currency === "JPY")
       .filter((o) => new Date(o.updatedAt).getTime() >= cutoff)
       .filter((o) => o.availability !== "out_of_stock")
       .map((o) => o.priceMinor)
@@ -239,11 +255,13 @@ function effectivePriceYen(
 export function score(
   product: RiceCookerProduct,
   criteria: RiceCookerCriteria,
-  offers?: ProductOffer[]
+  offers?: ProductOffer[],
+  context?: EvaluationContext
 ): ScoreResult {
   const breakdown: Record<string, number> = {};
 
-  // fitScore: 容量の過不足
+  // fitScore: 容量の過不足。容量不足はhardMatchで除外済みのため、
+  // この関数単体で呼ばれた場合の防御として diff<0 は0点に倒す。
   const diff = product.specs.capacityGou - criteria.requiredCapacityGou;
   breakdown.fitScore =
     diff === 0 ? 3 : diff > 0 && diff <= 2 ? 2.5 : diff > 2 && diff <= 4 ? 2 : diff > 4 ? 1 : 0;
@@ -260,10 +278,11 @@ export function score(
   breakdown.featureScore = featureScore(product, criteria);
 
   // budgetScore: 実効価格（実売offer最安値→参考価格の順）と予算
-  breakdown.budgetScore = budgetScore(product, criteria, offers);
+  breakdown.budgetScore = budgetScore(product, criteria, offers, context);
 
   // freshnessScore: 発売年が新しいほど高く（不明なら中立）
-  const age = product.specs.releaseYear === null ? null : CURRENT_YEAR - product.specs.releaseYear;
+  const age =
+    product.specs.releaseYear === null ? null : referenceYear(context) - product.specs.releaseYear;
   breakdown.freshnessScore =
     age === null ? 0.6 : age <= 0 ? 1 : age === 1 ? 0.8 : age === 2 ? 0.6 : 0.4;
 
@@ -319,11 +338,12 @@ function featureScore(product: RiceCookerProduct, criteria: RiceCookerCriteria):
 function budgetScore(
   product: RiceCookerProduct,
   criteria: RiceCookerCriteria,
-  offers?: ProductOffer[]
+  offers?: ProductOffer[],
+  context?: EvaluationContext
 ): number {
   const { min, max } = criteria.budgetYen;
   if (min === null && max === null) return 1.5; // 予算制約なし
-  const price = effectivePriceYen(product, offers);
+  const price = effectivePriceYen(product, offers, context?.now);
   if (price === null) return 1.5; // 価格不明は中立（不当に上下させない）
   if (max !== null && price > max) return price <= max * 1.2 ? 1 : 0;
   if (min !== null && price < min) return price >= min * 0.8 ? 1 : 0;
@@ -353,11 +373,12 @@ export function formatSpecs(product: RiceCookerProduct): SpecDisplayItem[] {
   return items;
 }
 
-/** 推薦理由の生成（reasonCode → 表示文言） */
+/** 推薦理由の生成（reasonCode → 表示文言）。positive のみ。条件外は weakPoints に一本化 */
 export function explain(
   product: RiceCookerProduct,
   criteria: RiceCookerCriteria,
-  offers?: ProductOffer[]
+  offers?: ProductOffer[],
+  context?: EvaluationContext
 ): RecommendationReason[] {
   const reasons: RecommendationReason[] = [];
   const diff = product.specs.capacityGou - criteria.requiredCapacityGou;
@@ -423,7 +444,10 @@ export function explain(
     });
   }
 
-  if (product.specs.releaseYear !== null && CURRENT_YEAR - product.specs.releaseYear <= 1) {
+  if (
+    product.specs.releaseYear !== null &&
+    referenceYear(context) - product.specs.releaseYear <= 1
+  ) {
     reasons.push({
       code: "fresh_model",
       text: "新しいモデル（発売年" + product.specs.releaseYear + "）",
@@ -431,33 +455,32 @@ export function explain(
   }
 
   const { min, max } = criteria.budgetYen;
-  const price = effectivePriceYen(product, offers);
+  const price = effectivePriceYen(product, offers, context?.now);
   if ((min !== null || max !== null) && price !== null) {
-    if (max !== null && price > max && price <= max * 1.2) {
-      reasons.push({ code: "price_near_budget", text: "価格が予算の上限に近い" });
-    } else if (max !== null && price > max) {
-      reasons.push({
-        code: "price_over_budget",
-        text: `価格が予算の上限（${max.toLocaleString()}円）を超える`,
-      });
-    } else if (min !== null && price < min) {
-      reasons.push({
-        code: "price_below_budget",
-        text: `価格が予算の目安（${min.toLocaleString()}円以上）を下回る`,
-      });
-    } else {
-      reasons.push({ code: "budget_fit", text: `価格が予算内（${price.toLocaleString()}円）` });
+    const overMax = max !== null && price > max;
+    const underMin = min !== null && price < min;
+    // 予算超過は weakPoints(price_over) に一本化する（positive/negativeの極性混在を避ける）
+    if (!overMax) {
+      if (underMin) {
+        reasons.push({
+          code: "price_below_budget",
+          text: `価格が予算の目安（${min!.toLocaleString()}円以上）を下回る`,
+        });
+      } else {
+        reasons.push({ code: "budget_fit", text: `価格が予算内（${price.toLocaleString()}円）` });
+      }
     }
   }
 
   return reasons;
 }
 
-/** 惜しい点の生成（スコア/条件から外れる点を正直に提示） */
+/** 惜しい点の生成（スコア/条件から外れる点を正直に提示）。negative のみ */
 export function weakPoints(
   product: RiceCookerProduct,
   criteria: RiceCookerCriteria,
-  offers?: ProductOffer[]
+  offers?: ProductOffer[],
+  context?: EvaluationContext
 ): RecommendationReason[] {
   const points: RecommendationReason[] = [];
   const diff = product.specs.capacityGou - criteria.requiredCapacityGou;
@@ -529,20 +552,28 @@ export function weakPoints(
     });
   }
 
-  if (product.specs.releaseYear !== null && CURRENT_YEAR - product.specs.releaseYear >= 3) {
+  if (
+    product.specs.releaseYear !== null &&
+    referenceYear(context) - product.specs.releaseYear >= 3
+  ) {
+    const age = referenceYear(context) - product.specs.releaseYear;
     points.push({
       code: "old_model",
-      text: `発売から${CURRENT_YEAR - product.specs.releaseYear}年経過したモデルです`,
+      text: `発売から${age}年経過したモデルです`,
     });
   }
 
   const { min, max } = criteria.budgetYen;
-  const price = effectivePriceYen(product, offers);
+  const price = effectivePriceYen(product, offers, context?.now);
   if ((min !== null || max !== null) && price !== null && max !== null && price > max) {
-    points.push({
-      code: "price_over",
-      text: `価格が予算の上限（${max.toLocaleString()}円）を超えています`,
-    });
+    if (price <= max * 1.2) {
+      points.push({ code: "price_near_budget", text: "価格が予算の上限に近い" });
+    } else {
+      points.push({
+        code: "price_over",
+        text: `価格が予算の上限（${max.toLocaleString()}円）を超えています`,
+      });
+    }
   }
 
   return points;

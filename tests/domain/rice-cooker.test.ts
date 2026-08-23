@@ -60,6 +60,12 @@ const FULL_ANSWERS: AnswerRecord = {
   installWidth: "under25",
 };
 
+/**
+ * 判定基準時刻（発売年・offer鮮度の計算に使用）。
+ * 実行日時に依存しない決定論的テストのため、時刻に依存する評価へは必ず注入する。
+ */
+const NOW = new Date("2026-08-20T00:00:00Z");
+
 describe("deriveCriteria", () => {
   it.each([
     [
@@ -259,8 +265,8 @@ describe("score（null安全）", () => {
         releaseYear: 2026,
       },
     });
-    const sOld = score(old, deriveCriteria({ cookVolume: "3" }));
-    const sFresh = score(fresh, deriveCriteria({ cookVolume: "3" }));
+    const sOld = score(old, deriveCriteria({ cookVolume: "3" }), undefined, { now: NOW });
+    const sFresh = score(fresh, deriveCriteria({ cookVolume: "3" }), undefined, { now: NOW });
     expect(sFresh.breakdown.freshnessScore!).toBeGreaterThan(sOld.breakdown.freshnessScore!);
   });
 });
@@ -283,7 +289,7 @@ describe("explain", () => {
         releaseYear: null,
       },
     });
-    const reasons = explain(p, deriveCriteria(FULL_ANSWERS));
+    const reasons = explain(p, deriveCriteria(FULL_ANSWERS), undefined, { now: NOW });
     expect(reasons.some((r) => r.code === "feature_tacook")).toBe(true);
   });
 
@@ -304,7 +310,7 @@ describe("explain", () => {
         releaseYear: null,
       },
     });
-    const reasons = explain(p, deriveCriteria(FULL_ANSWERS));
+    const reasons = explain(p, deriveCriteria(FULL_ANSWERS), undefined, { now: NOW });
     expect(reasons.some((r) => r.code === "fresh_model")).toBe(false);
   });
 
@@ -325,7 +331,7 @@ describe("explain", () => {
         releaseYear: 2026,
       },
     });
-    const reasons = explain(p, deriveCriteria(FULL_ANSWERS));
+    const reasons = explain(p, deriveCriteria(FULL_ANSWERS), undefined, { now: NOW });
     expect(reasons.some((r) => r.code === "fresh_model")).toBe(true);
   });
 
@@ -346,7 +352,14 @@ describe("explain", () => {
         releaseYear: null,
       },
     });
-    const reasons = explain(p, deriveCriteria({ ...FULL_ANSWERS, priority: "keepwarm" }));
+    const reasons = explain(
+      p,
+      deriveCriteria({ ...FULL_ANSWERS, priority: "keepwarm" }),
+      undefined,
+      {
+        now: NOW,
+      }
+    );
     expect(reasons.some((r) => r.code === "keepwarm_long")).toBe(true);
   });
 });
@@ -370,7 +383,7 @@ describe("weakPoints（惜しい点）", () => {
   });
 
   it("容量過剰・加熱不一致・古いモデルを惜しい点として返す", () => {
-    const points = weakPoints(p, deriveCriteria(FULL_ANSWERS));
+    const points = weakPoints(p, deriveCriteria(FULL_ANSWERS), undefined, { now: NOW });
     expect(points.some((w) => w.code === "capacity_large")).toBe(true);
     expect(points.some((w) => w.code === "heating_mismatch")).toBe(true);
     expect(points.some((w) => w.code === "old_model")).toBe(true);
@@ -387,7 +400,6 @@ describe("weakPoints（惜しい点）", () => {
     const points = weakPoints(p, deriveCriteria({ cookVolume: "3", priority: "keepwarm" }));
     expect(points.some((w) => w.code === "keepwarm_short")).toBe(true);
   });
-
   it("条件に合う商品では惜しい点が空（または条件外のみ）", () => {
     const good = makeProduct({
       productId: "wp2",
@@ -405,7 +417,7 @@ describe("weakPoints（惜しい点）", () => {
         releaseYear: 2026,
       },
     });
-    const points = weakPoints(good, deriveCriteria(FULL_ANSWERS));
+    const points = weakPoints(good, deriveCriteria(FULL_ANSWERS), undefined, { now: NOW });
     expect(points).toEqual([]);
   });
 
@@ -544,24 +556,28 @@ describe("30商品PoC（fetch → normalize → criteria → hardMatch → score
     expect(result.progress.answered).toBe(2);
   });
 
-  it("条件が厳しすぎるとnoMatchになり理由が返る（条件は緩和しない）", async () => {
-    const fetched = await adapter.fetch();
-    const normalized = await adapter.normalize(fetched, ctx);
-    const products = asRiceCookerProducts(normalized.products);
-
-    // 10合+幅24cm以下+1万円未満 はほぼ成立しない
-    const result = recommend(
-      riceCookerModule,
-      {
-        cookVolume: "10",
-        heating: "any",
-        budget: "under10k",
-        priority: "compact",
-        installWidth: "under24",
-      },
-      products,
-      new Map()
-    );
+  it("条件が厳しすぎるとnoMatchになり理由が返る（条件は緩和しない）", () => {
+    // 有効な回答値に対して、容量条件を満たす商品を1つも含まないカタログを用意する。
+    // （実カタログは回帰ゲートにより常時マッチを保証するため、noMatch経路は合成データで検証する）
+    const tinyCatalog = [
+      makeProduct({
+        productId: "tiny",
+        specs: {
+          capacityGou: 3,
+          heatingMethod: "micom",
+          powerW: null,
+          weightKg: null,
+          widthMm: 200,
+          depthMm: 240,
+          heightMm: 200,
+          keepWarmHours: null,
+          innerPot: null,
+          features: [],
+          releaseYear: null,
+        },
+      }),
+    ];
+    const result = recommend(riceCookerModule, FULL_ANSWERS, tinyCatalog, new Map());
     expect(result.noMatch).toBe(true);
     expect(result.candidates).toEqual([]);
     expect(result.noMatchReasons.length).toBeGreaterThan(0);
@@ -847,7 +863,8 @@ function budgetScoreViaScore(
   criteria: ReturnType<typeof deriveCriteria>,
   offers: ProductOffer[]
 ) {
-  const s = score(product, criteria, offers);
+  // offer鮮度判定を実行日時に依存させないためNOWを注入する
+  const s = score(product, criteria, offers, { now: NOW });
   return s.breakdown.budgetScore;
 }
 
