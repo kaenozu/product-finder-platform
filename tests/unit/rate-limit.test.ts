@@ -9,11 +9,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import { RATE_LIMITS, checkRateLimit, getRateLimitConfig } from "../../src/worker/rate-limit";
-import {
-  isLikelyBot,
-  CLICK_RETENTION_DAYS,
-  CLICK_DEDUP_WINDOW_MS,
-} from "../../src/worker/click-retention";
+import { CLICK_RETENTION_DAYS, CLICK_DEDUP_WINDOW_MS } from "../../src/worker/click-retention";
 
 // ──────────────────────────────────────────────
 // Rate limit config
@@ -186,48 +182,6 @@ describe("checkRateLimit", () => {
 
     const result = await checkRateLimit(createRequest("/go"), "/go", kv, config);
     expect(result.allowed).toBe(true);
-  });
-});
-
-// ──────────────────────────────────────────────
-// Bot detection
-// ──────────────────────────────────────────────
-
-describe("isLikelyBot", () => {
-  it("headless ブラウザを検出する", () => {
-    const req = new Request("https://example.com/go", {
-      headers: { "user-agent": "Mozilla/5.0 HeadlessChrome/100.0.0.0" },
-    });
-    expect(isLikelyBot(req)).toBe(true);
-  });
-
-  it("bot User-Agent を検出する", () => {
-    const req = new Request("https://example.com/go", {
-      headers: { "user-agent": "Googlebot/2.1" },
-    });
-    expect(isLikelyBot(req)).toBe(true);
-  });
-
-  it("curl を検出する", () => {
-    const req = new Request("https://example.com/go", {
-      headers: { "user-agent": "curl/7.88.1" },
-    });
-    expect(isLikelyBot(req)).toBe(true);
-  });
-
-  it("正常なブラウザは bot とみなさない", () => {
-    const req = new Request("https://example.com/go", {
-      headers: {
-        "user-agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
-      },
-    });
-    expect(isLikelyBot(req)).toBe(false);
-  });
-
-  it("User-Agent なしは bot とみなさない", () => {
-    const req = new Request("https://example.com/go");
-    expect(isLikelyBot(req)).toBe(false);
   });
 });
 

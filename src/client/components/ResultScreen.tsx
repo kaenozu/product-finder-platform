@@ -13,14 +13,26 @@ interface Props {
 
 export function ResultScreen({ result, copy, onRestart, onEditAnswers }: Props) {
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [shareCopied, setShareCopied] = useState(false);
   const headingRef = useRef<HTMLHeadingElement>(null);
 
   useEffect(() => {
     headingRef.current?.focus();
   }, []);
 
+  // 診断状態はURL（?a=…）に同期されているため、そのまま共有できる
+  async function handleShare() {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      setShareCopied(true);
+      setTimeout(() => setShareCopied(false), 2000);
+    } catch {
+      // クリップボード不可の環境ではURLを手動でコピーしてもらう
+    }
+  }
+
   return (
-    <section className="result" aria-live="polite">
+    <section className="result">
       <p className="eyebrow">診断結果{result.status === "final" ? "・確定" : "・途中"}</p>
       <h2 ref={headingRef} tabIndex={-1}>
         {result.noMatch ? copy.resultNoMatchTitle : copy.resultTitle}
@@ -84,6 +96,9 @@ export function ResultScreen({ result, copy, onRestart, onEditAnswers }: Props) 
             ← 回答を変更する
           </button>
         )}
+        <button className="btn-ghost" type="button" onClick={handleShare}>
+          {shareCopied ? "URLをコピーしました" : "結果のURLをコピー"}
+        </button>
         <button className="btn-ghost" type="button" onClick={onRestart}>
           最初からやり直す
         </button>

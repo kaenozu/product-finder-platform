@@ -19,6 +19,12 @@ No step in this document writes Production D1, publishes a catalog, changes Secr
    - application rollback SHA
    - active catalog version ID and status
 
+Catalog rollback is executed with the dedicated CLI (dry-run by default):
+
+```bash
+pnpm db:rollback -- --category rice-cooker --version <version_id> --execute
+```
+
 ## Cron trigger read-back
 
 After deploying the cron Worker, verify the trigger configuration:

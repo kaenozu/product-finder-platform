@@ -160,37 +160,3 @@ export async function cleanupExpiredClicks(
 
   return { deleted, errors: 0, hasMore: true };
 }
-
-// ──────────────────────────────────────────────
-// Click event filtering (bot vs human)
-// ──────────────────────────────────────────────
-
-/**
- * click event が bot 由来かどうかの判定ヒント。
- * IP・UA を保存しないプライバシー設計のため、
- * 以下のシグナルで間接的に判定する：
- *
- * - デュープ窓内の連続クリック
- * - 非 standard User-Agent（_headless, bot, crawler）
- *
- * ただし IP/UA を保存しないため、判定結果はログ出力のみで
- * click_events テーブルには影響させない。
- */
-export function isLikelyBot(request: Request): boolean {
-  const ua = request.headers.get("user-agent") ?? "";
-
-  // headless ブラウザや bot の User-Agent パターン
-  const botPatterns = [
-    /headless/i,
-    /bot/i,
-    /crawler/i,
-    /spider/i,
-    /scraper/i,
-    /curl/i,
-    /wget/i,
-    /python-requests/i,
-    /go-http-client/i,
-  ];
-
-  return botPatterns.some((p) => p.test(ua));
-}

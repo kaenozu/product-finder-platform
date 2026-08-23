@@ -8,22 +8,17 @@ export const sourceRefSchema = z.object({
 });
 
 /**
- * 手動キュレーションレコードのバリデーションスキーマ。
- * 品質ゲート（schema gate）とアダプタのnormalizeで共用する。
+ * カタログspecs（DB保存形式）のバリデーションスキーマ。
+ * 手動キュレーションレコードのspec項目と単一の真実を共有する。
+ * _sources は出典メタ（API表示用）としてspecs内に同梱して保存される。
  */
-export const curatedRiceCookerRecordSchema = z.object({
-  productId: z
-    .string()
-    .min(1)
-    .regex(/^[a-z0-9-]+$/, "productIdは小文字英数字とハイフンのみ"),
+export const riceCookerSpecsSchema = z.object({
   imageUrl: z
     .string()
     .url("商品画像URLはhttps")
     .refine((u) => u.startsWith("https://"), "商品画像URLはhttpsのみ")
-    .nullable(),
-  manufacturer: z.string().min(1),
-  model: z.string().min(1),
-  displayName: z.string().min(1),
+    .nullable()
+    .optional(),
   capacityGou: z.number().positive().max(12),
   heatingMethod: z.enum(["micom", "ih", "pressure_ih"]),
   powerW: z.number().nonnegative().nullable(),
@@ -35,6 +30,22 @@ export const curatedRiceCookerRecordSchema = z.object({
   innerPot: z.string().min(1).nullable(),
   features: z.array(z.enum(FEATURE_TAGS)),
   releaseYear: z.number().int().min(2000).max(2100).nullable(),
+  _sources: z.array(sourceRefSchema).optional(),
+});
+
+/**
+ * 手動キュレーションレコードのバリデーションスキーマ。
+ * 品質ゲート（schema gate）とアダプタのnormalizeで共用する。
+ */
+export const curatedRiceCookerRecordSchema = z.object({
+  productId: z
+    .string()
+    .min(1)
+    .regex(/^[a-z0-9-]+$/, "productIdは小文字英数字とハイフンのみ"),
+  ...riceCookerSpecsSchema.shape,
+  manufacturer: z.string().min(1),
+  model: z.string().min(1),
+  displayName: z.string().min(1),
   referencePriceYen: z.number().positive().nullable(),
   availability: z
     .enum(["in_stock", "low_stock", "out_of_stock", "unknown"])

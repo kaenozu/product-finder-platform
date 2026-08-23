@@ -1,17 +1,11 @@
-import { useEffect, useRef, useState } from "react";
-import type { ConfigResponse, EvaluateResponse } from "./lib/api";
-import { fetchConfig, postEvaluate } from "./lib/api";
+import { useEffect, useMemo, useState } from "react";
+import { fetchConfig } from "./lib/api";
+import type { ConfigResponse } from "./lib/api";
 import { computeFlow } from "./lib/flow";
+import { useDiagnosisFlow } from "./lib/useDiagnosisFlow";
 import { StartScreen } from "./components/StartScreen";
 import { QuestionScreen } from "./components/QuestionScreen";
 import { ResultScreen } from "./components/ResultScreen";
-
-type Screen = "loading" | "start" | "questions" | "result";
-
-function firstQuestionKey(config: ConfigResponse | null): string | null {
-  if (!config) return null;
-  return [...config.questions].sort((a, b) => a.order - b.order)[0]?.key ?? null;
-}
 
 interface AppProps {
   categoryKey: string;
@@ -19,155 +13,43 @@ interface AppProps {
 
 export default function App({ categoryKey }: AppProps) {
   const [config, setConfig] = useState<ConfigResponse | null>(null);
-  const [screen, setScreen] = useState<Screen>("loading");
-  const [answers, setAnswers] = useState<Record<string, string>>({});
-  const [currentKey, setCurrentKey] = useState<string | null>(null);
-  const [result, setResult] = useState<EvaluateResponse | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [previewLoading, setPreviewLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const previewRequestId = useRef(0);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  // URL共有（?a=…）の生クエリ値。初回マウント時に一度だけ取り込む
+  const urlAnswers = useMemo(() => new URLSearchParams(window.location.search).get("a"), []);
+  const flow = useDiagnosisFlow(config, urlAnswers);
 
   useEffect(() => {
+    let cancelled = false;
     fetchConfig(categoryKey)
       .then((c) => {
+        if (cancelled) return;
         document.title = `${c.copy.appTitle} — ${c.copy.heroTitle}`;
         const meta = document.querySelector('meta[name="description"]');
         if (meta) meta.setAttribute("content", c.copy.heroLead);
         setConfig(c);
-        setScreen("start");
       })
       .catch((e: unknown) => {
+        if (cancelled) return;
         const message = e instanceof Error ? e.message : "設定の読み込みに失敗しました";
         // 未知カテゴリ（URL直打ちなど）はポータルへ案内
-        if (message.includes("unsupported_category") || message === "no_categories_registered") {
+        if (message.includes("unsupported_category")) {
           window.location.replace("/");
           return;
         }
-        setError(message);
+        setLoadError(message);
       });
+    return () => {
+      cancelled = true;
+    };
   }, [categoryKey]);
 
-  function invalidatePreview() {
-    previewRequestId.current += 1;
-    setPreviewLoading(false);
-  }
+  const { state } = flow;
 
-  async function evaluate(cleanAnswers: Record<string, string>) {
-    if (!config) return;
-    invalidatePreview();
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await postEvaluate(config.categoryKey, cleanAnswers);
-      setResult(res);
-      setAnswers(cleanAnswers);
-      setScreen("result");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "診断に失敗しました");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function refreshPreview(cleanAnswers: Record<string, string>) {
-    if (!config) return;
-    const requestId = ++previewRequestId.current;
-    setPreviewLoading(true);
-    setError(null);
-    setResult(null);
-    try {
-      const res = await postEvaluate(config.categoryKey, cleanAnswers);
-      if (requestId !== previewRequestId.current) return;
-      setResult(res);
-    } catch (e) {
-      if (requestId !== previewRequestId.current) return;
-      setError(e instanceof Error ? e.message : "候補の更新に失敗しました");
-    } finally {
-      if (requestId === previewRequestId.current) {
-        setPreviewLoading(false);
-      }
-    }
-  }
-
-  function handleStart() {
-    setCurrentKey(firstQuestionKey(config));
-    setScreen("questions");
-  }
-
-  function handleSelect(value: string) {
-    if (!config || !currentKey) return;
-    const flow = computeFlow(config.questions, { ...answers, [currentKey]: value });
-    setError(null);
-    if (flow.complete) {
-      setResult(null);
-      void evaluate(flow.clean);
-    } else {
-      setAnswers(flow.clean);
-      setCurrentKey(flow.currentKey);
-      // 既存APIの途中推薦条件（2問以上）を満たしたら、質問画面の候補を自動更新する。
-      if (flow.answered >= config.partialEligibility.minAnswers) {
-        void refreshPreview(flow.clean);
-      } else {
-        invalidatePreview();
-        setResult(null);
-      }
-    }
-  }
-
-  function handleBack() {
-    if (!config) return;
-    const flow = computeFlow(config.questions, answers);
-    const prev = flow.path[flow.path.length - 2];
-    if (!prev) return;
-    const next = { ...flow.clean };
-    delete next[prev];
-    const nextFlow = computeFlow(config.questions, next);
-    setAnswers(nextFlow.clean);
-    setCurrentKey(nextFlow.currentKey);
-    setError(null);
-    if (nextFlow.answered >= config.partialEligibility.minAnswers) {
-      void refreshPreview(nextFlow.clean);
-    } else {
-      invalidatePreview();
-      setResult(null);
-    }
-  }
-
-  function handleOpenPreview() {
-    if (result) setScreen("result");
-  }
-
-  function handleEditAnswers() {
-    if (!config) return;
-    const flow = computeFlow(config.questions, answers);
-    if (flow.complete) {
-      const lastKey = flow.path[flow.path.length - 1];
-      const editableAnswers = { ...flow.clean };
-      if (lastKey) delete editableAnswers[lastKey];
-      const editableFlow = computeFlow(config.questions, editableAnswers);
-      setAnswers(editableFlow.clean);
-      setCurrentKey(editableFlow.currentKey);
-      setResult(null);
-    } else {
-      setCurrentKey(flow.currentKey);
-    }
-    setScreen("questions");
-  }
-
-  function handleRestart() {
-    invalidatePreview();
-    setAnswers({});
-    setResult(null);
-    setCurrentKey(firstQuestionKey(config));
-    setScreen("start");
-  }
-
-  if (error && !config) {
+  if (loadError && !config) {
     return (
       <main>
         <p className="note error" role="alert">
-          {error}
+          {loadError}
         </p>
         <button className="btn-primary" type="button" onClick={() => location.reload()}>
           再読み込み
@@ -176,9 +58,9 @@ export default function App({ categoryKey }: AppProps) {
     );
   }
 
-  const question = config?.questions.find((q) => q.key === currentKey) ?? null;
-  const flow = config ? computeFlow(config.questions, answers) : null;
-  const previewResult = result?.status === "partial" ? result : null;
+  const question = config?.questions.find((q) => q.key === state.currentKey) ?? null;
+  const computedFlow = config ? computeFlow(config.questions, state.answers) : null;
+  const previewResult = state.result?.status === "partial" ? state.result : null;
 
   return (
     <main>
@@ -191,47 +73,54 @@ export default function App({ categoryKey }: AppProps) {
           <span className="logo-sep">/</span>
           {config?.copy.appTitle}
         </span>
-        {screen === "questions" && result && (
-          <button className="link" type="button" onClick={handleOpenPreview}>
-            {result.noMatch ? "条件を確認" : result.status === "final" ? "結果へ" : "候補を詳しく"}
+        {state.screen === "questions" && state.result && (
+          <button className="link" type="button" onClick={flow.handleOpenPreview}>
+            {state.result.noMatch
+              ? "条件を確認"
+              : state.result.status === "final"
+                ? "結果へ"
+                : "候補を詳しく"}
           </button>
         )}
       </header>
 
-      {screen === "loading" && (
+      {(!config || !flow.restoreDone) && !loadError && (
         <p className="note" role="status">
           読み込み中…
         </p>
       )}
-      {screen === "start" && config && <StartScreen copy={config.copy} onStart={handleStart} />}
-      {screen === "questions" && question && flow && (
+      {config && flow.restoreDone && state.screen === "start" && (
+        <StartScreen copy={config.copy} onStart={flow.handleStart} />
+      )}
+      {state.screen === "questions" && question && computedFlow && (
         <QuestionScreen
           question={question}
-          flow={flow}
-          onSelect={handleSelect}
-          onBack={handleBack}
+          flow={computedFlow}
+          answers={state.answers}
+          onSelect={flow.handleSelect}
+          onBack={flow.handleBack}
           previewResult={previewResult}
-          previewLoading={previewLoading}
-          onOpenPreview={handleOpenPreview}
-          loading={loading}
+          previewLoading={flow.previewLoading}
+          onOpenPreview={flow.handleOpenPreview}
+          loading={flow.loading}
         />
       )}
-      {screen === "result" && result && config && (
+      {state.screen === "result" && state.result && config && (
         <ResultScreen
-          result={result}
+          result={state.result}
           copy={config.copy}
-          onRestart={handleRestart}
-          onEditAnswers={handleEditAnswers}
+          onRestart={flow.handleRestart}
+          onEditAnswers={flow.handleEditAnswers}
         />
       )}
-      {loading && screen === "questions" && (
+      {flow.loading && state.screen === "questions" && (
         <p className="note" role="status">
           候補を計算しています…
         </p>
       )}
-      {error && screen !== "loading" && (
+      {flow.error && (
         <p className="note error" role="alert">
-          {error}
+          {flow.error}
         </p>
       )}
     </main>

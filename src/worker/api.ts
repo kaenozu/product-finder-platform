@@ -4,9 +4,10 @@ import { activeQuestionKeys } from "../shared/domain/flow";
 import { getModule, listModules } from "../shared/domain/registry";
 import type { CatalogProduct, ProductOffer, AnswerRecord } from "../shared/domain/types";
 import {
-  getActiveProductById,
+  getActiveProductAcrossCategories,
   getCatalogReadiness,
   getIngestHealth,
+  hasPublishedCatalog,
   listActiveProducts,
   listOffersForProducts,
 } from "./repo/catalog";
@@ -90,6 +91,32 @@ function splitSources(product: CatalogProduct) {
     },
     sources: _sources ?? [],
   };
+}
+
+/**
+ * DB読み出しの汎用行をmodule.parseProductで検証込みカテゴリ型へ絞め込む。
+ * 全行が破損していた場合はnull（呼び出し側がcatalog_unavailableとして扱う）。
+ */
+function toTypedProducts<P extends CatalogProduct>(
+  module: { parseProduct(raw: CatalogProduct): P | null },
+  rows: CatalogProduct[]
+): P[] | null {
+  const typed: P[] = [];
+  let invalid = 0;
+  for (const row of rows) {
+    const parsed = module.parseProduct(row);
+    if (parsed === null) {
+      invalid += 1;
+      console.warn(`[api] product failed category type validation: ${row.productId}`);
+    } else {
+      typed.push(parsed);
+    }
+  }
+  if (typed.length === 0 && rows.length > 0) return null;
+  if (invalid > 0) {
+    console.warn(`[api] ${invalid}/${rows.length} products skipped by type validation`);
+  }
+  return typed;
 }
 
 /** カテゴリ一覧（pitariko ポータル表示用） */
@@ -187,15 +214,16 @@ export async function handleReady(env: Env): Promise<Response> {
 
 export async function handleConfig(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
-  const requested = url.searchParams.get("category") ?? undefined;
+  // category指定は必須。未指定での暗黙fallback（registry登録順依存）を廃止する。
+  const requested = url.searchParams.get("category");
+  if (!requested) {
+    return json({ error: "missing_category" }, { status: 400 });
+  }
   const keys = listModules();
-  if (requested && !keys.includes(requested)) {
+  if (!keys.includes(requested)) {
     return json({ error: "unsupported_category", categoryKey: requested }, { status: 404 });
   }
-  const key = requested ?? keys[0];
-  if (!key) {
-    return json({ error: "no_categories_registered" }, { status: 500 });
-  }
+  const key = requested;
   if (!getEnabledCategories(env).has(key)) {
     return json({ error: "category_not_enabled", categoryKey: key }, { status: 404 });
   }
@@ -246,8 +274,10 @@ export async function handleEvaluate(env: Env, body: unknown): Promise<Response>
     return json({ error: "invalid_answers", issues: answerErrors }, { status: 400 });
   }
 
-  const criteria = module.deriveCriteria(answers);
-  if (!module.canShowPartialResult(answers, criteria)) {
+  // 暫定候補の開始条件（partialEligibility.minAnswers）を満たすか。判定はエンジンと同一規則。
+  const activeKeys = activeQuestionKeys(module.questions, answers);
+  const answeredCount = activeKeys.filter((k) => answers[k] !== undefined).length;
+  if (answeredCount < module.partialEligibility.minAnswers) {
     return json(
       { error: "insufficient_answers", message: "もう少し質問に答えてください" },
       { status: 400 }
@@ -266,7 +296,18 @@ export async function handleEvaluate(env: Env, body: unknown): Promise<Response>
     );
   }
 
-  const products = await listActiveProducts(env.DB, categoryKey);
+  const rawProducts = await listActiveProducts(env.DB, categoryKey);
+  const products = toTypedProducts(module, rawProducts);
+  if (products === null) {
+    return json(
+      {
+        error: "catalog_unavailable",
+        categoryKey,
+        message: "公開カタログが利用できないため診断を実行できません",
+      },
+      { status: 503 }
+    );
+  }
 
   const offersByProduct = new Map<string, ProductOffer[]>();
   for (const offer of await listOffersForProducts(
@@ -309,19 +350,33 @@ export async function handleProductDetail(env: Env, productId: string): Promise<
   }
   const enabledKeys = getEnabledCategories(env);
   const keys = listModules().filter((key) => enabledKeys.has(key));
-  for (const categoryKey of keys) {
-    const product = await getActiveProductById(env.DB, categoryKey, productId);
-    if (product) {
-      const offers = await listOffersForProducts(env.DB, categoryKey, [productId]);
-      const module = getModule(categoryKey);
-      return json({
-        ...splitSources(product),
-        offers,
-        specItems: module.formatSpecs(product),
-        scoreLabels: module.scoreLabels,
-        maxScore: module.maxScore,
-      });
+
+  // カタログ欠損（一時障害）と商品不存在を区別する（Issue #13）。
+  // published な active catalog が1つも無い場合は404ではなく503で応答する。
+  const anyPublished = await hasPublishedCatalog(env.DB, keys);
+  if (!anyPublished) {
+    return json(
+      { error: "catalog_unavailable", message: "公開カタログが利用できません" },
+      { status: 503 }
+    );
+  }
+
+  const product = await getActiveProductAcrossCategories(env.DB, keys, productId);
+  if (product) {
+    const offers = await listOffersForProducts(env.DB, product.categoryKey, [productId]);
+    const module = getModule(product.categoryKey);
+    const typed = module.parseProduct(product);
+    if (!typed) {
+      console.warn(`[api] product failed category type validation: ${product.productId}`);
+      return json({ error: "product_not_found", productId }, { status: 404 });
     }
+    return json({
+      ...splitSources(typed),
+      offers,
+      specItems: module.formatSpecs(typed),
+      scoreLabels: module.scoreLabels,
+      maxScore: module.maxScore,
+    });
   }
   return json({ error: "product_not_found", productId }, { status: 404 });
 }

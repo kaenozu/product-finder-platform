@@ -208,6 +208,15 @@ test.describe("炊飯器選び診断", () => {
   test("結果画面に商品画像・購入CTA・データ更新日・アフィリエイト開示が表示される", async ({
     page,
   }) => {
+    // 商品画像は実外部サイトへのプロキシ取得のため、上流障害でテストが揺らがないようスタブする
+    const png = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+      "base64"
+    );
+    await page.route("**/img?url=*", (route) =>
+      route.fulfill({ contentType: "image/png", body: png })
+    );
+
     await page.goto("/rice-cooker");
     await page.getByRole("button", { name: "診断をはじめる" }).click();
 
@@ -221,5 +230,47 @@ test.describe("炊飯器選び診断", () => {
     await expect(page.getByRole("heading", { name: "あなたに合う炊飯器" })).toBeVisible();
     await expect(card.locator(".product-image img").first()).toBeVisible();
     await expect(page.getByText("本サイトはアフィリエイト広告を利用しています")).toBeVisible();
+  });
+
+  test("診断状態がURLに同期され、リロードでも結果が保持される", async ({ page }) => {
+    await page.goto("/rice-cooker");
+    await page.getByRole("button", { name: "診断をはじめる" }).click();
+
+    await page.getByRole("button", { name: "5.5合（5人以上）" }).click();
+    await page.getByRole("button", { name: "特にこだわらない" }).click();
+    await page.getByRole("button", { name: "こだわらない" }).click();
+    await page.getByRole("button", { name: "炊き上がりの味" }).click();
+    await page.getByRole("button", { name: "制限なし" }).click();
+
+    await expect(page.getByRole("heading", { name: "あなたに合う炊飯器" })).toBeVisible();
+
+    // 回答がURLに同期されている
+    const url = new URL(page.url());
+    expect(url.searchParams.get("a")).toContain("cookVolume:5.5");
+
+    // リロードしても同じ回答・結果が復元される
+    await page.reload();
+    await expect(page.getByRole("heading", { name: "あなたに合う炊飯器" })).toBeVisible();
+    await expect(page.locator(".product-card").first()).toBeVisible();
+  });
+
+  test("結果画面からURLをコピーして共有できる", async ({ page, context, browserName }) => {
+    test.skip(browserName === "webkit", "webkitはclipboard-write権限のgrantに非対応");
+    await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+    await page.goto("/rice-cooker");
+    await page.getByRole("button", { name: "診断をはじめる" }).click();
+
+    await page.getByRole("button", { name: "3合（2〜3人分）" }).click();
+    await page.getByRole("button", { name: /^IH炊飯器/ }).click();
+    await page.getByRole("button", { name: "こだわらない" }).click();
+    await page.getByRole("button", { name: "コンパクトさ" }).click();
+    await page.getByRole("button", { name: "制限なし" }).click();
+
+    await expect(page.getByRole("heading", { name: "あなたに合う炊飯器" })).toBeVisible();
+    await page.getByRole("button", { name: "結果のURLをコピー" }).click();
+    await expect(page.getByText("URLをコピーしました")).toBeVisible();
+
+    const clip = await page.evaluate(() => navigator.clipboard.readText());
+    expect(clip).toContain("/rice-cooker?a=");
   });
 });

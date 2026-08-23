@@ -3,7 +3,8 @@ const CONTENT_SECURITY_POLICY = [
   "script-src 'self'",
   "style-src 'self' https://fonts.googleapis.com",
   "font-src 'self' https://fonts.gstatic.com",
-  "img-src 'self' data: https:",
+  // 商品画像はすべて同一オリジンの /img プロキシ経由で配信されるため https: 全許可は不要
+  "img-src 'self' data:",
   "connect-src 'self'",
   "frame-ancestors 'none'",
   "base-uri 'self'",

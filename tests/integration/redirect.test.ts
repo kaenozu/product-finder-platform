@@ -124,6 +124,19 @@ describe("/go redirect", () => {
     expect(res.status).toBe(404);
   });
 
+  it("publishedカタログが1つもない場合は404ではなく503 catalog_unavailable（Issue #13）", async () => {
+    // seedOfferせず、カタログが空の状態で未知トークンを叩く
+    const res = await handleRedirect(
+      workerEnv,
+      new Request("http://localhost"),
+      "rakuten",
+      "no-such-item"
+    );
+    expect(res.status).toBe(503);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe("catalog_unavailable");
+  });
+
   it("https以外のoutbound_urlはリダイレクトしない（オープンリダイレクト対策）", async () => {
     await seedOffer({ outboundUrl: "http://evil.example.com/redirect" });
     const res = await handleRedirect(

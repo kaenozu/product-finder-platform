@@ -199,6 +199,6 @@ export function shouldKeepStaleOffer(
 ): boolean {
   if (policy === "hide") return false;
   if (policy === "stale_mark") return true; // 明示的に stale 表示
-  // keep_last: 鮄度条件を満たすなら維持
+  // keep_last: 鮮度条件を満たすなら維持
   return filterFreshOffers(staleOffers, now).length > 0;
 }

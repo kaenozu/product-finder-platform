@@ -75,5 +75,3 @@ export const INSTALL_WIDTH_MM: Record<"under24" | "under25" | "under27", number>
   under25: 250,
   under27: 270,
 };
-
-export const CURRENT_YEAR = 2026;

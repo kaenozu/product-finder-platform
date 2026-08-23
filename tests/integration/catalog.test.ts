@@ -556,10 +556,24 @@ describe("API handlers（D1連動）", () => {
     expect(res.status).toBe(404);
   });
 
-  it("product detail: 無効化カテゴリの商品を公開しない", async () => {
+  it("product detail: publishedカタログがない場合は503 catalog_unavailable（Issue #13）", async () => {
+    await db().exec(
+      "DELETE FROM product_offers; DELETE FROM products; DELETE FROM catalog_versions; DELETE FROM catalog_state; DELETE FROM ingest_runs;"
+    );
+    const res = await handleProductDetail(workerEnv, "nonexistent-product");
+    expect(res.status).toBe(503);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe("catalog_unavailable");
+  });
+
+  it("product detail: 無効化カテゴリの商品を公開しない（有効カテゴリがゼロなら503）", async () => {
     const disabledEnv = { ...workerEnv, ENABLED_CATEGORIES: "" } as Env;
     const res = await handleProductDetail(disabledEnv, "panasonic-sr-x910e");
-    expect(res.status).toBe(404);
+    // 有効カテゴリが存在しない = published catalogなし としてfail-closedの503。
+    // 商品情報はいかなる場合も公開されない。
+    expect(res.status).toBe(503);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe("catalog_unavailable");
   });
 });
 
