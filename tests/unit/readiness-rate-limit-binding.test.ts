@@ -36,4 +36,30 @@ describe("service readiness rate-limit binding", () => {
     expect(response).not.toBeNull();
     expect(response!.status).toBe(503);
   });
+
+  it.each([
+    ["/go/provider/token", "GET"],
+    ["/img", "GET"],
+    ["/api/diagnosis/evaluate", "POST"],
+  ] as const)(
+    "fails closed on public hosts for %s when RATE_LIMIT_BYPASS=%s",
+    async (pathname, method) => {
+      for (const bypass of [undefined, "0", "01", "1"] as const) {
+        const request = new Request(`https://pitariko.example${pathname}`, {
+          method,
+          ...(method === "POST" ? { body: "{}" } : {}),
+        });
+        const response = await handleRequest(
+          request,
+          envWithoutKv(bypass === undefined ? {} : { RATE_LIMIT_BYPASS: bypass })
+        );
+
+        expect(response).not.toBeNull();
+        expect(response!.status).toBe(503);
+        await expect(response!.json()).resolves.toMatchObject({
+          error: "rate_limit_unavailable",
+        });
+      }
+    }
+  );
 });

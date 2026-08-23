@@ -71,8 +71,9 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
     if (!env.KV) {
       // KV未設定 = Productionでrate limitが無効化されている状態。
       // fail-closed: 503で応答し、設定不整合を検出する。
-      // ローカル開発では RATE_LIMIT_BYPASS=1 で回避可能。
-      if (!env.RATE_LIMIT_BYPASS) {
+      // ローカル開発では loopback host からの RATE_LIMIT_BYPASS=1 のみ回避可能。
+      const localBypass = env.RATE_LIMIT_BYPASS === "1" && isLoopbackHost(url.hostname);
+      if (!localBypass) {
         return json({ error: "rate_limit_unavailable", path: rateLimit.path }, { status: 503 });
       }
     } else {
