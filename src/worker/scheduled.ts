@@ -115,7 +115,9 @@ export async function handleScheduled(
     const ids = await reconcileStaleIngestRuns(env.DB);
     reconciled = ids.length;
     if (reconciled > 0) {
-      console.log(`[scheduled] runId=${runId} reconciled=${reconciled} staleRuns: ${ids.join(",")}`);
+      console.log(
+        `[scheduled] runId=${runId} reconciled=${reconciled} staleRuns: ${ids.join(",")}`
+      );
     }
   } catch (error) {
     console.error(`[scheduled] runId=${runId} reconcile failed: ${String(error)}`);
