@@ -109,7 +109,8 @@ export async function getCatalogReadiness(
        FROM catalog_state s
        LEFT JOIN catalog_versions v ON v.version_id = s.active_version_id
        LEFT JOIN products p ON p.version_id = s.active_version_id AND p.category_key = ?
-       LEFT JOIN product_offers o ON o.version_id = s.active_version_id
+       LEFT JOIN product_offers o
+         ON o.version_id = s.active_version_id AND o.product_id = p.product_id
        WHERE s.category_key = ?
        GROUP BY s.active_version_id, v.status`
     )

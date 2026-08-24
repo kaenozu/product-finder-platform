@@ -83,9 +83,13 @@ pnpm check:deploy   # wrangler deploy --dry-run
 - **時刻変更**: Production trigger 変更としてコード変更と分離して扱う
 - **read-back 確認**: deploy 後に `wrangler triggers list` で trigger 設定を確認する
 
-## 運用上の設定依存（要Dashboard管理）
+## 運用上の設定依存
 
 - `KV`: rate limit / click dedup 用のKV namespace binding。**未設定だと該当APIは503でfail-closedする**ため、Pages/Worker両環境でのbinding設定を必須とする。
+  1. `npx wrangler kv namespace create RATE_LIMIT` でnamespaceを作成
+  2. 返却された `id` を `wrangler.jsonc` と `wrangler.worker.jsonc` の `kv_namespaces[].id`（`"KV"` binding）に記入
+  3. `pnpm check:kv` が通ることを確認してからdeploy
+  - Dashboardでbindingを管理し続ける場合も、`check:kv` のガード対象外となるため、デプロイ前に手動でbindingの存在確認を行うこと
 - `ENABLED_CATEGORIES`: 公開有効カテゴリのカンマ区切り。未設定なら全登録カテゴリを有効とする。
 - `DEV_SEED` / `RATE_LIMIT_BYPASS`: ローカル開発専用。本番には設定しない。
 
