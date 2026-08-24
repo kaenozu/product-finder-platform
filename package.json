@@ -23,8 +23,9 @@
     "db:migrate": "wrangler d1 migrations apply product-finder-platform --local --config wrangler.worker.jsonc",
     "db:rollback": "node scripts/catalog-rollback.mjs",
     "db:reset": "wrangler d1 execute product-finder-platform --local --config wrangler.worker.jsonc --command \"DELETE FROM product_offers; DELETE FROM products; DELETE FROM catalog_versions; DELETE FROM catalog_state; DELETE FROM ingest_runs;\"",
-    "deploy:pages": "vite build && node scripts/build-worker.mjs && wrangler pages deploy",
+    "deploy:pages": "vite build && node scripts/build-worker.mjs && node scripts/check-kv-binding.mjs && wrangler pages deploy",
     "deploy:cron": "wrangler deploy --config wrangler.cron.jsonc",
+    "check:kv": "node scripts/check-kv-binding.mjs",
     "check:deploy": "wrangler deploy --config wrangler.worker.jsonc --dry-run && wrangler deploy --config wrangler.cron.jsonc --dry-run",
     "verify": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm test:integration && pnpm build && git diff --check",
     "verify:ci": "pnpm verify && pnpm audit --audit-level high && pnpm check:deploy && pnpm e2e"
