@@ -44,9 +44,7 @@ if (!CATEGORY_RE.test(values.category)) {
   process.exit(2);
 }
 if (!VERSION_RE.test(values.version)) {
-  console.error(
-    `[catalog-rollback] invalid --version: ${values.version} (expected version id)`
-  );
+  console.error(`[catalog-rollback] invalid --version: ${values.version} (expected version id)`);
   process.exit(2);
 }
 
