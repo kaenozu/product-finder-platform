@@ -26,7 +26,7 @@
     "deploy:pages": "vite build && node scripts/build-worker.mjs && node scripts/check-kv-binding.mjs && wrangler pages deploy",
     "deploy:cron": "wrangler deploy --config wrangler.cron.jsonc",
     "check:kv": "node scripts/check-kv-binding.mjs",
-    "check:deploy": "pnpm check:kv && wrangler deploy --config wrangler.worker.jsonc --dry-run && wrangler deploy --config wrangler.cron.jsonc --dry-run",
+    "check:deploy": "wrangler deploy --config wrangler.worker.jsonc --dry-run && wrangler deploy --config wrangler.cron.jsonc --dry-run",
     "verify": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm test:integration && pnpm build && git diff --check",
     "verify:ci": "pnpm verify && pnpm audit --audit-level high && pnpm check:deploy && pnpm e2e"
   },
