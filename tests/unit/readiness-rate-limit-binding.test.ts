@@ -62,4 +62,17 @@ describe("service readiness rate-limit binding", () => {
       }
     }
   );
+
+  it("preserves loopback local bypass for RATE_LIMIT_BYPASS=1", async () => {
+    const response = await handleRequest(
+      new Request("http://localhost/api/diagnosis/evaluate", {
+        method: "POST",
+        body: "{}",
+      }),
+      envWithoutKv({ RATE_LIMIT_BYPASS: "1" })
+    );
+
+    expect(response).not.toBeNull();
+    expect(response!.status).not.toBe(503);
+  });
 });

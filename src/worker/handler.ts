@@ -51,6 +51,10 @@ function isLoopbackHost(hostname: string): boolean {
   return ["localhost", "127.0.0.1", "[::1]"].includes(hostname);
 }
 
+function canBypassRateLimit(env: Env, hostname: string): boolean {
+  return env.RATE_LIMIT_BYPASS === "1" && isLoopbackHost(hostname);
+}
+
 /**
  * API・リダイレクト・SPA フォールバックの共通ルーティング。
  * 処理対象外のパスでは null を返し、呼び出し側（Worker / Pages _worker）が
@@ -72,7 +76,7 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
       // KV未設定 = Productionでrate limitが無効化されている状態。
       // fail-closed: 503で応答し、設定不整合を検出する。
       // ローカル開発では loopback host からの RATE_LIMIT_BYPASS=1 のみ回避可能。
-      const localBypass = env.RATE_LIMIT_BYPASS === "1" && isLoopbackHost(url.hostname);
+      const localBypass = canBypassRateLimit(env, url.hostname);
       if (!localBypass) {
         return json({ error: "rate_limit_unavailable", path: rateLimit.path }, { status: 503 });
       }
@@ -92,7 +96,7 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
       // /health はプロセス生存確認、/ready は実トラフィックを受けられるかの確認。
       // rate-limit対象APIがfail-closedのため、公開環境でKV bindingが欠けている場合は
       // DB/catalogが正常でもready=trueにしない。ローカルloopbackのみ明示bypassを許可する。
-      const localBypass = env.RATE_LIMIT_BYPASS === "1" && isLoopbackHost(url.hostname);
+      const localBypass = canBypassRateLimit(env, url.hostname);
       if (!env.KV && !localBypass) {
         return json(
           {
