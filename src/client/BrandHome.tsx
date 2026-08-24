@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { fetchCategories } from "./lib/api";
 import type { CategorySummary } from "./lib/api";
+import { resolveTopPagePreview } from "./lib/result-preview";
 import { AffiliateNote } from "./components/AffiliateNote";
+import { ResultPreviewSection } from "./components/ResultPreviewSection";
 
 function BrandLogo() {
   return (
@@ -27,7 +29,7 @@ export function BrandHome() {
   const maxQuestions = categories?.length
     ? Math.max(...categories.map((category) => category.questionCount))
     : null;
-  const preview = categories?.find((category) => category.copy.resultPreview)?.copy.resultPreview;
+  const previewState = resolveTopPagePreview(categories);
   const onlyCategory = categories?.length === 1 ? categories[0] : undefined;
 
   return (
@@ -63,39 +65,7 @@ export function BrandHome() {
         )}
       </section>
 
-      {preview && (
-        <section className="result-preview" aria-label="診断結果の表示例">
-          <div className="section-heading">
-            <p className="eyebrow">診断後にわかること</p>
-            <h2>候補だけでなく、選ぶ理由まで</h2>
-          </div>
-          <article className="preview-card">
-            <div className="preview-card-header">
-              <span className="rank-badge">第一候補</span>
-              <span className="preview-label">表示例</span>
-            </div>
-            <h3>{preview.candidateProduct}</h3>
-            <p className="preview-summary">{preview.matchSummary}</p>
-            <div className="preview-columns">
-              <div>
-                <strong>合う理由</strong>
-                <ul>
-                  {preview.reasons.map((reason) => (
-                    <li key={reason}>{reason}</li>
-                  ))}
-                </ul>
-              </div>
-              <div>
-                <strong>妥協点</strong>
-                <p>{preview.weakPoint}</p>
-              </div>
-            </div>
-            <p className="preview-difference">
-              <strong>他候補との違い</strong> {preview.difference}
-            </p>
-          </article>
-        </section>
-      )}
+      <ResultPreviewSection state={previewState} />
 
       <section className="category-list" aria-labelledby="category-heading">
         <div className="section-heading">
