@@ -47,6 +47,10 @@ function decodePathSegment(value: string): string | null {
   }
 }
 
+function isLoopbackHost(hostname: string): boolean {
+  return ["localhost", "127.0.0.1", "[::1]"].includes(hostname);
+}
+
 /**
  * API・リダイレクト・SPA フォールバックの共通ルーティング。
  * 処理対象外のパスでは null を返し、呼び出し側（Worker / Pages _worker）が
@@ -67,8 +71,9 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
     if (!env.KV) {
       // KV未設定 = Productionでrate limitが無効化されている状態。
       // fail-closed: 503で応答し、設定不整合を検出する。
-      // ローカル開発では RATE_LIMIT_BYPASS=1 で回避可能。
-      if (!env.RATE_LIMIT_BYPASS) {
+      // ローカル開発では loopback host からの RATE_LIMIT_BYPASS=1 のみ回避可能。
+      const localBypass = env.RATE_LIMIT_BYPASS === "1" && isLoopbackHost(url.hostname);
+      if (!localBypass) {
         return json({ error: "rate_limit_unavailable", path: rateLimit.path }, { status: 503 });
       }
     } else {
@@ -84,11 +89,26 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
       return json({ ok: true, service: "product-finder-platform", ts: new Date().toISOString() });
     }
     if (pathname === "/api/ready" || pathname === "/api/ready/") {
+      // /health はプロセス生存確認、/ready は実トラフィックを受けられるかの確認。
+      // rate-limit対象APIがfail-closedのため、公開環境でKV bindingが欠けている場合は
+      // DB/catalogが正常でもready=trueにしない。ローカルloopbackのみ明示bypassを許可する。
+      const localBypass = env.RATE_LIMIT_BYPASS === "1" && isLoopbackHost(url.hostname);
+      if (!env.KV && !localBypass) {
+        return json(
+          {
+            ok: false,
+            service: "product-finder-platform",
+            error: "rate_limit_unavailable",
+            checks: { rateLimitKv: false },
+          },
+          { status: 503 }
+        );
+      }
       return handleReady(env);
     }
     if (pathname === "/api/dev/seed" || pathname === "/api/dev/seed/") {
       // ローカル開発/e2e専用。設定ミスで公開環境にDEV_SEEDが入っても実行しない。
-      const isLoopback = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
+      const isLoopback = isLoopbackHost(url.hostname);
       if (env.DEV_SEED !== "1" || !isLoopback) {
         return json({ error: "forbidden" }, { status: 403 });
       }
