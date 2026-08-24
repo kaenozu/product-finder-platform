@@ -2,7 +2,10 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
 import { BrandHome } from "./BrandHome";
+import { syncCanonicalUrl } from "./seo";
 import "./styles.css";
+
+syncCanonicalUrl();
 
 // URL分離: "/" = pitarikoポータル, "/rice-cooker" = 炊飯器診断。
 // 未知パスはポータルへフォールバック（SPAフォールバックと合わせて安全側に倒す）。
