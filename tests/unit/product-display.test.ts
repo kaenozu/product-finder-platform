@@ -146,14 +146,29 @@ describe("bestOffer", () => {
     expect(bestOffer(candidate)?.providerItemId).toBe("low");
   });
 
-  it("すべて out_of_stock なら全 offer から最安にフォールバックする", () => {
+  it("すべて out_of_stock なら購入CTAを出さない", () => {
     const candidate = makeCandidate({
       offers: [
         makeOffer({ providerItemId: "1", priceMinor: 1500000, availability: "out_of_stock" }),
         makeOffer({ providerItemId: "2", priceMinor: 1200000, availability: "out_of_stock" }),
       ],
     });
-    expect(bestOffer(candidate)?.providerItemId).toBe("2");
+    expect(bestOffer(candidate)).toBeNull();
+  });
+
+  it("7日を超えたofferは価格・CTAから除外する", () => {
+    const candidate = makeCandidate({
+      offers: [
+        makeOffer({
+          providerItemId: "stale",
+          priceMinor: 100,
+          updatedAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString(),
+        }),
+      ],
+      product: { ...makeCandidate().product, referencePriceYen: 9800 },
+    });
+    expect(bestOffer(candidate)).toBeNull();
+    expect(priceInfo(candidate)).toEqual({ kind: "reference", label: "参考価格", value: 9800 });
   });
 
   it("priceMinor が null の offer は最後の候補になる", () => {
