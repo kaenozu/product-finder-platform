@@ -13,9 +13,7 @@ function isFreshOffer(offer: ProductOffer, now = Date.now()): boolean {
 function usableOffers(candidate: CandidateResponse): ProductOffer[] {
   return candidate.offers.filter(
     (offer) =>
-      isFreshOffer(offer) &&
-      offer.currency === "JPY" &&
-      offer.availability !== "out_of_stock"
+      isFreshOffer(offer) && offer.currency === "JPY" && offer.availability !== "out_of_stock"
   );
 }
 
