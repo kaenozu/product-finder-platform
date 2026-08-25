@@ -7,6 +7,8 @@ import { LiveCandidates } from "./LiveCandidates";
 interface Props {
   question: QuestionDefinition;
   flow: FlowState;
+  /** 現在の回答（選択済みオプションの表現に使用） */
+  answers?: Record<string, string>;
   onSelect: (value: string) => void;
   onBack: () => void;
   previewResult: EvaluateResponse | null;
@@ -18,6 +20,7 @@ interface Props {
 export function QuestionScreen({
   question,
   flow,
+  answers,
   onSelect,
   onBack,
   previewResult,
@@ -32,8 +35,10 @@ export function QuestionScreen({
     headingRef.current?.focus();
   }, [question.key]);
 
+  const selectedValue = answers?.[question.key] ?? null;
+
   return (
-    <section className="question" aria-live="polite">
+    <section className="question">
       <div
         className="progress"
         role="progressbar"
@@ -54,19 +59,22 @@ export function QuestionScreen({
       {question.description && <p className="lead">{question.description}</p>}
 
       <div className="options" role="group" aria-label={question.title}>
-        {question.options.map((option) => (
-          <button
-            key={option.value}
-            className="option"
-            type="button"
-            disabled={loading}
-            aria-pressed={false}
-            onClick={() => onSelect(option.value)}
-          >
-            <span className="option-label">{option.label}</span>
-            {option.description && <span className="option-desc">{option.description}</span>}
-          </button>
-        ))}
+        {question.options.map((option) => {
+          const selected = selectedValue === option.value;
+          return (
+            <button
+              key={option.value}
+              className={selected ? "option selected" : "option"}
+              type="button"
+              disabled={loading}
+              aria-pressed={selected}
+              onClick={() => onSelect(option.value)}
+            >
+              <span className="option-label">{option.label}</span>
+              {option.description && <span className="option-desc">{option.description}</span>}
+            </button>
+          );
+        })}
       </div>
 
       {flow.answered > 0 && (

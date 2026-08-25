@@ -55,7 +55,8 @@ export function recommend<C, P extends CatalogProduct>(
   const activeKeys = activeQuestionKeys(module.questions, answers);
   const answeredCount = activeKeys.filter((k) => answers[k] !== undefined).length;
 
-  if (!module.canShowPartialResult(answers, criteria)) {
+  // 暫定候補の開始条件は partialEligibility 設定のみで決まる（単一の真実）
+  if (answeredCount < module.partialEligibility.minAnswers) {
     return {
       status: "partial",
       progress: { answered: answeredCount, estimatedTotal: activeKeys.length },

@@ -45,32 +45,53 @@ pnpm verify:ci      # verify + audit + deploy dry-run + Playwright E2E
 pnpm e2e            # Playwright e2e（ローカルサーバー自動起動）
 node scripts/e2e-server.mjs   # ローカル確認用サーバー（build+migration+seed）
 pnpm db:migrate     # D1ローカルmigration適用
+pnpm db:rollback -- --category <key> --version <id>  # catalog rollback（dry-runが既定）
 pnpm check:deploy   # wrangler deploy --dry-run
 ```
 
 ## データ方針
 
 - 手動キュレーションのみ。推測・AI補完禁止、未確認は `null`
-- 品質ゲート7種を通過したバージョンのみ publish（失敗時は rejected で条件自動緩和なし）
+- 品質ゲート（schema / count / uniqueness / product-type / カテゴリ固有 range・fixture / hard-condition回帰 / version回帰 / freshness）を通過したバージョンのみ publish（失敗時は rejected で条件自動緩和なし）
 - 価格はオープン価格のため `referencePriceYen` は原則 null（UIでは「オープン価格」表示）
 
 ## Production構成と既知の制約
 
 - 公開アプリ: https://pitariko.pages.dev/
-- Pages側のUIと、診断API・カタログ・cronを提供するCloudflare Workerを分離する。
+- Pages側のUIと、診断API・カタログを提供するCloudflare Workerを分離する。
 - 本番カタログはD1の`catalog_state` / `catalog_versions` / `products` / `product_offers`で管理する。
 - 開発用seedは本番データ投入の代替ではない。Production D1のmigration・catalog publish・rollbackは明示的な運用手順で行う。
+  - rollbackは `pnpm db:rollback -- --category <key> --version <version_id> [--execute]`（dry-runが既定）
 - 現在の炊飯器adapterは手動キュレーション中心で、offers/価格の自動取得が実データ更新パイプラインとして成立しているとは限らない。価格や在庫は推測しない。
-- Productionでactive catalogが欠損・空の場合、診断APIが一時的なカタログ障害と通常のno-matchを区別できない既知Issueがある: [#13](https://github.com/kaenozu/product-finder-platform/issues/13)
-- 未知カテゴリを炊飯器へfallbackさせず`404 unsupported_category`で拒否する: [#14](https://github.com/kaenozu/product-finder-platform/issues/14)
+
+### 障害時の応答契約
+
+- 診断API・商品詳細・`/go` は、公開カタログの欠損/未publishを `503 catalog_unavailable` として通常のno-match/404と区別して返す（fail-closed）。
+- 未知カテゴリを既定カテゴリへfallbackさせない。`/api/config` はcategory指定必須（未指定400、未知404 `unsupported_category`）。
+
+## URL共有
+
+- 診断の回答状態は `/rice-cooker?a=cookVolume:5.5,heating:ih...` 形式でURLに同期される（replaceState）。
+- 結果画面の「結果のURLをコピー」で共有できる。リロード・共有リンクから回答と結果が復元される。
+- 不正な改変クエリは質問定義に対して検証され、無効ペアは黙って破棄される。
 
 ## Cron スケジュール
 
 - **実行時刻**: UTC 03:00 = JST 12:00 (noon)
-- **設定ファイル**: `wrangler.cron.jsonc` の `"0 3 * * *"`
+- **設定ファイル**: `wrangler.cron.jsonc` の `"0 3 * * *"`（cron triggerの単一の所有者。`wrangler.worker.jsonc` には意図的に持たせない）
 - **Cloudflare Cron Triggers は UTC 基準**: DST の影響を受けない日本時間前提
 - **時刻変更**: Production trigger 変更としてコード変更と分離して扱う
 - **read-back 確認**: deploy 後に `wrangler triggers list` で trigger 設定を確認する
+
+## 運用上の設定依存
+
+- `KV`: rate limit / click dedup 用のKV namespace binding。**未設定だと該当APIは503でfail-closedする**ため、Pages/Worker両環境でのbinding設定を必須とする。
+  1. `npx wrangler kv namespace create RATE_LIMIT` でnamespaceを作成
+  2. 返却された `id` を `wrangler.jsonc` と `wrangler.worker.jsonc` の `kv_namespaces[].id`（`"KV"` binding）に記入
+  3. `pnpm check:kv` が通ることを確認してからdeploy
+  - Dashboardでbindingを管理し続ける場合も、`check:kv` のガード対象外となるため、デプロイ前に手動でbindingの存在確認を行うこと
+- `ENABLED_CATEGORIES`: 公開有効カテゴリのカンマ区切り。未設定なら全登録カテゴリを有効とする。
+- `DEV_SEED` / `RATE_LIMIT_BYPASS`: ローカル開発専用。本番には設定しない。
 
 ## 品質管理
 
@@ -79,7 +100,6 @@ pnpm check:deploy   # wrangler deploy --dry-run
 
 ## 未実施・保留（TODO）
 
-- Production D1のcatalog readiness確認とIssue #13の修正
 - offers/価格の実データ更新adapter（規約・rate limit・freshness policyを含む）
 - カテゴリ追加（炊飯器以外）の実証
-- SEO / OGタグ / 診断状態のURL共有
+- SSG化（商品詳細ページ・schema.org構造データ）とOG画像 — SPAのSEO制約を抜本的に解消する次段

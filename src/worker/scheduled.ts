@@ -1,6 +1,8 @@
 import type { Env } from "./env";
 import { getAdapter, listAdapterCategories } from "./adapters";
 import { runIngest, type IngestSummary } from "./ingest/run";
+import { cleanupExpiredClicks } from "./click-retention";
+import { reconcileStaleIngestRuns } from "./repo/catalog";
 
 export type ScheduledCategoryStatus = IngestSummary["status"] | "failed";
 
@@ -21,11 +23,19 @@ export interface ScheduledRunSummary {
     rejected: number;
     failed: number;
   };
+  retention: {
+    deleted: number;
+    errors: number;
+    hasMore: boolean;
+  };
+  reconciled: number;
 }
 
 export function summarizeScheduledResults(
   runId: string,
-  categories: ScheduledCategoryResult[]
+  categories: ScheduledCategoryResult[],
+  retention = { deleted: 0, errors: 0, hasMore: false },
+  reconciled = 0
 ): ScheduledRunSummary {
   const counts = {
     succeeded: categories.filter((result) => result.status === "succeeded").length,
@@ -44,6 +54,8 @@ export function summarizeScheduledResults(
           : "partial_failure",
     categories,
     counts,
+    retention,
+    reconciled,
   };
 }
 
@@ -84,7 +96,34 @@ export async function handleScheduled(
     }
   }
 
-  const result = summarizeScheduledResults(runId, categories);
+  let retention: ScheduledRunSummary["retention"];
+  try {
+    retention = await cleanupExpiredClicks(env);
+    console.log(
+      `[scheduled] runId=${runId} retention deleted=${retention.deleted} ` +
+        `hasMore=${retention.hasMore} errors=${retention.errors}`
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    retention = { deleted: 0, errors: 1, hasMore: true };
+    console.error(`[scheduled] runId=${runId} retention failed: ${message}`);
+  }
+
+  // running超過のingest runをreconcile（audit失敗 recovery）
+  let reconciled = 0;
+  try {
+    const ids = await reconcileStaleIngestRuns(env.DB);
+    reconciled = ids.length;
+    if (reconciled > 0) {
+      console.log(
+        `[scheduled] runId=${runId} reconciled=${reconciled} staleRuns: ${ids.join(",")}`
+      );
+    }
+  } catch (error) {
+    console.error(`[scheduled] runId=${runId} reconcile failed: ${String(error)}`);
+  }
+
+  const result = summarizeScheduledResults(runId, categories, retention, reconciled);
   console.log(
     `[scheduled] runId=${runId} result=${result.status} ` +
       `succeeded=${result.counts.succeeded} skipped=${result.counts.skipped} ` +
@@ -92,10 +131,11 @@ export async function handleScheduled(
   );
   void controller;
 
-  if (result.status !== "succeeded") {
+  if (result.status !== "succeeded" || retention.errors > 0) {
     throw new Error(
       `[scheduled] runId=${runId} result=${result.status} ` +
-        `rejected=${result.counts.rejected} failed=${result.counts.failed}`
+        `rejected=${result.counts.rejected} failed=${result.counts.failed} ` +
+        `retentionErrors=${retention.errors}`
     );
   }
   return result;

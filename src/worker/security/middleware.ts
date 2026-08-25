@@ -9,7 +9,12 @@
  * 3. Redirect guard (fetchWithRedirectGuard) は個別 handler 内
  */
 import type { Env } from "../env";
+import { json } from "../http";
 import { checkRateLimit, getRateLimitConfig } from "./rate-limiter";
+
+function isLoopbackHost(hostname: string): boolean {
+  return ["localhost", "127.0.0.1", "[::1]"].includes(hostname);
+}
 
 /**
  * 全セキュリティチェックを実行する。
@@ -20,14 +25,21 @@ export async function runSecurityChecks(
   env: Env,
   pathname: string
 ): Promise<Response | null> {
-  // 1. Rate limit check
-  const rl = getRateLimitConfig(pathname);
-  if (rl && env.KV) {
-    const result = await checkRateLimit(request, rl.path, env.KV, rl.config);
-    if (!result.allowed && result.response) {
-      return result.response;
+  const rateLimit = getRateLimitConfig(pathname);
+  if (!rateLimit) return null;
+
+  // A missing KV binding disables the production rate-limit contract. Keep the
+  // existing fail-closed behavior in this shared middleware; only loopback
+  // requests with an explicit development bypass may proceed.
+  if (!env.KV) {
+    const url = new URL(request.url);
+    const localBypass = env.RATE_LIMIT_BYPASS === "1" && isLoopbackHost(url.hostname);
+    if (!localBypass) {
+      return json({ error: "rate_limit_unavailable", path: rateLimit.path }, { status: 503 });
     }
+    return null;
   }
 
-  return null;
+  const result = await checkRateLimit(request, rateLimit.path, env.KV, rateLimit.config);
+  return !result.allowed && result.response ? result.response : null;
 }

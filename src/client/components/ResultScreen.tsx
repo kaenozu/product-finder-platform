@@ -13,14 +13,26 @@ interface Props {
 
 export function ResultScreen({ result, copy, onRestart, onEditAnswers }: Props) {
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [shareCopied, setShareCopied] = useState(false);
   const headingRef = useRef<HTMLHeadingElement>(null);
 
   useEffect(() => {
     headingRef.current?.focus();
   }, []);
 
+  // 診断状態はURL（?a=…）に同期されているため、そのまま共有できる
+  async function handleShare() {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      setShareCopied(true);
+      setTimeout(() => setShareCopied(false), 2000);
+    } catch {
+      // クリップボード不可の環境ではURLを手動でコピーしてもらう
+    }
+  }
+
   return (
-    <section className="result" aria-live="polite">
+    <section className="result">
       <p className="eyebrow">診断結果{result.status === "final" ? "・確定" : "・途中"}</p>
       <h2 ref={headingRef} tabIndex={-1}>
         {result.noMatch ? copy.resultNoMatchTitle : copy.resultTitle}
@@ -53,7 +65,12 @@ export function ResultScreen({ result, copy, onRestart, onEditAnswers }: Props) 
             {result.matchedCount > result.candidates.length
               ? `上位${result.candidates.length}件を表示しています。`
               : ""}{" "}
-            {result.status === "partial" && "すべての質問に答えるとより正確です。"}
+            {result.status === "partial" &&
+              "すべての質問に答えると、回答条件との比較材料が増えます。"}
+          </p>
+          <p className="score-note">
+            商品仕様は公式情報を照合しています。順位は、その仕様と回答条件を運営側の評価ルールで
+            相対的に点数化したものです。表示される一致度は確率や正解率ではありません。
           </p>
           <div className="candidates">
             {result.candidates.map((c, i) => (
@@ -79,6 +96,9 @@ export function ResultScreen({ result, copy, onRestart, onEditAnswers }: Props) 
             ← 回答を変更する
           </button>
         )}
+        <button className="btn-ghost" type="button" onClick={handleShare}>
+          {shareCopied ? "URLをコピーしました" : "結果のURLをコピー"}
+        </button>
         <button className="btn-ghost" type="button" onClick={onRestart}>
           最初からやり直す
         </button>

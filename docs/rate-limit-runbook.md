@@ -6,21 +6,21 @@
 
 ## Threat Model
 
-| Endpoint | Threat | Impact | 対策 |
-|----------|--------|--------|------|
-| `/go/:provider/:token` | bot による click 連打 | click_events 汚染、D1 write 増加 | rate limit + dedup |
-| `/img` | cache-busting query による帯域濫用 | Cloudflare 帯域コスト増加 | rate limit + query normalization |
-| `/api/diagnosis/evaluate` | 大量リクエスト | D1 read 増加、CPU 時間消費 | rate limit |
+| Endpoint                  | Threat                             | Impact                           | 対策                             |
+| ------------------------- | ---------------------------------- | -------------------------------- | -------------------------------- |
+| `/go/:provider/:token`    | bot による click 連打              | click_events 汚染、D1 write 増加 | rate limit + dedup               |
+| `/img`                    | cache-busting query による帯域濫用 | Cloudflare 帯域コスト増加        | rate limit + query normalization |
+| `/api/diagnosis/evaluate` | 大量リクエスト                     | D1 read 増加、CPU 時間消費       | rate limit                       |
 
 ## Repo 内 Rate Limit (KV ベース)
 
 ### 設定値
 
-| Path | Window | Max Requests | Retry-After |
-|------|--------|-------------|-------------|
-| `/go` | 60s | 30 | 60s |
-| `/img` | 60s | 60 | 60s |
-| `/api/diagnosis/evaluate` | 60s | 20 | 60s |
+| Path                      | Window | Max Requests | Retry-After |
+| ------------------------- | ------ | ------------ | ----------- |
+| `/go`                     | 60s    | 30           | 60s         |
+| `/img`                    | 60s    | 60           | 60s         |
+| `/api/diagnosis/evaluate` | 60s    | 20           | 60s         |
 
 ### KV Namespace
 
@@ -29,9 +29,7 @@ Rate limit 用の KV namespace を wrangler に追加する:
 ```jsonc
 // wrangler.worker.jsonc
 {
-  "kv_namespaces": [
-    { "binding": "KV", "id": "..." }
-  ]
+  "kv_namespaces": [{ "binding": "KV", "id": "..." }],
 }
 ```
 
@@ -129,20 +127,40 @@ X-RateLimit-Remaining: 0
 X-RateLimit-Reset: 1692633600
 ```
 
-## Bot Detection
+## Bot 対策
 
-### パターン
+### 現状の方針
 
-User-Agent ヘッダーで以下のパターンを検出:
+- アプリケーション内のUAパターン判定は実装しない（以前の `isLikelyBot` はどの経路からも呼ばれない死蔵コードだったため削除済み）。
+- bot対策は **rate limit（KV固定窓）+ click dedup（5秒窓）** と、Cloudflare WAF の edge 側ルール（下記）で担う。
 
-- `HeadlessChrome`, `HeadlessFirefox`
-- `bot`, `crawler`, `spider`, `scraper`
-- `curl`, `wget`, `python-requests`, `go-http-client`
+### Click dedup の識別子（日次saltローテーション）
+
+click dedup の識別子は生の IP/UA を直接ハッシュせず、**日次saltを組み合わせたsalted hash** とする
+（Issue #64。実装: `src/worker/click-retention.ts`）。
+
+```
+identifier = SHA-256("{dailySalt}:{cf-connecting-ip}:{user-agent}")
+KV dedupキー = click_dedup:{identifier}:{providerKey}:{providerItemId}
+```
+
+| 項目             | 設定値                                                                  |
+| ---------------- | ----------------------------------------------------------------------- |
+| salt生成         | `crypto.randomUUID()`（存在しない場合のみ生成）                         |
+| ローテーション幅 | **UTC 日次**（キー `click_dedup_salt:{YYYY-MM-DD}` にUTC日付 embedded） |
+| salt保持期間     | KV TTL **48時間**（旧salt掃除用。ローテーション境界はUTC 0時）          |
+| 保存内容         | salt込みSHA-256識別子のみ。生IP/UAは保存・ログ出力しない                |
+
+保証:
+
+- 同一ユーザー・同一日内 → 同一salt → 同一識別子 → 5秒窓のデュープ検出が機能する
+- 異なる日 → saltが異なるため識別子が衝突しない（日跨ぎ直前後の5秒もデュープされない）
+- KV障害時はエフェメラルsaltへフォールバックし、dedupが効かなくなるだけで正当クリックは落とさない（fail-open）
 
 ### 注意事項
 
-- IP/UA を保存しないため、判定結果はログ出力のみ
-- click_events テーブルには影響させない（プライバシー最小化）
+- IP/UA を保存しない（プライバシー最小化）。click_events には商品・バージョン・時刻のみ記録する。
+- KV障害時のrate limitは可用性優先でfail-open（通過させる）一方、KV binding不在の設定不整合は503でfail-closedする。この思想の違いは意図的。
 
 ## 監視
 
@@ -167,6 +185,7 @@ wrangler d1 execute product-finder-platform --command "SELECT COUNT(*) FROM clic
 
 ## 変更履歴
 
-| 日付 | 変更 | 理由 |
-|------|------|------|
-| 2026-08-21 | 初版作成 | Issue #26 対応 |
+| 日付       | 変更                                          | 理由           |
+| ---------- | --------------------------------------------- | -------------- |
+| 2026-08-21 | 初版作成                                      | Issue #26 対応 |
+| 2026-08-24 | click dedup 識別子を日次salt込みSHA-256に変更 | Issue #64 対応 |

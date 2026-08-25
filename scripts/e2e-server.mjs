@@ -65,6 +65,8 @@ const devCommand = resolvePnpmCommand([
   PORT,
   "--var",
   "DEV_SEED:1",
+  "--var",
+  "RATE_LIMIT_BYPASS:1",
   "--config",
   "wrangler.worker.jsonc",
 ]);

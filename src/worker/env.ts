@@ -6,4 +6,6 @@ export interface Env {
   ENABLED_CATEGORIES?: string;
   /** ローカル開発/e2e専用。本番には設定しないこと（/api/dev/seed の有効化） */
   DEV_SEED?: string;
+  /** ローカル開発専用。KV未設定時のrate limit fail-closedを回避 */
+  RATE_LIMIT_BYPASS?: string;
 }

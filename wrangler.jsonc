@@ -3,6 +3,11 @@
   "name": "pitariko",
   "compatibility_date": "2026-08-19",
   "pages_build_output_dir": "./dist",
+  // KV binding (rate limit / click dedup) - 未設定だと該当APIは503でfail-closedする。
+  // 作成: npx wrangler kv namespace create RATE_LIMIT -> 返却されたidを記入
+  // "kv_namespaces": [
+  //   { "binding": "KV", "id": "<KV_NAMESPACE_ID>" }
+  // ],
   "d1_databases": [
     {
       "binding": "DB",

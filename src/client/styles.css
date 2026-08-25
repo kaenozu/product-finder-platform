@@ -299,6 +299,13 @@ h4 {
   box-shadow: var(--shadow-hover);
 }
 
+/* 戻った際にどれを選んでいたか分かるようにする（aria-pressedと対） */
+.option.selected {
+  border-color: var(--accent-fill);
+  background: color-mix(in srgb, var(--accent-fill) 10%, var(--surface));
+  box-shadow: inset 0 0 0 1px var(--accent-fill);
+}
+
 .option-label {
   font-weight: 600;
   font-size: 1rem;
@@ -663,6 +670,155 @@ h4 {
   color: var(--accent-fill);
   font-weight: 600;
   font-size: 0.9rem;
+}
+
+.header-note,
+.hero-facts span,
+.category-facts,
+.preview-label {
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+}
+
+.header-note {
+  font-weight: 600;
+}
+
+.hero-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 1.25rem 0;
+}
+
+.hero-facts span,
+.category-facts {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.3rem 0.65rem;
+  background: var(--surface);
+}
+
+.hero-cta {
+  display: block;
+  text-align: center;
+  text-decoration: none;
+  margin-bottom: 0;
+}
+
+.section-heading {
+  margin-bottom: 0.85rem;
+}
+
+.section-heading h2 {
+  margin-top: 0;
+}
+
+.result-preview,
+.trust-section {
+  margin-top: 3rem;
+}
+
+.preview-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+  box-shadow: var(--shadow);
+}
+
+.preview-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.preview-card h3 {
+  margin: 0.75rem 0 0.25rem;
+  font-size: 1.15rem;
+}
+
+.rank-badge {
+  display: inline-block;
+  color: var(--accent-fill);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.preview-summary,
+.preview-difference,
+.preview-columns p {
+  color: var(--text-secondary);
+  font-size: 0.88rem;
+}
+
+.preview-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.preview-columns strong,
+.preview-difference strong {
+  font-size: 0.82rem;
+}
+
+.preview-columns ul {
+  margin: 0.35rem 0 0;
+  padding-left: 1.1rem;
+  color: var(--text-secondary);
+  font-size: 0.88rem;
+}
+
+.preview-difference {
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 0.8rem;
+  margin: 1rem 0 0;
+}
+
+.trust-grid {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.trust-grid article {
+  background: var(--surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 1rem;
+}
+
+.trust-grid p {
+  margin: 0.25rem 0 0;
+  color: var(--text-secondary);
+  font-size: 0.88rem;
+}
+
+.category-facts {
+  margin-bottom: 0.7rem;
+}
+
+.category-card:focus-visible,
+.hero-cta:focus-visible,
+.category-cta:focus-visible,
+button:focus-visible,
+a:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--accent-fill) 55%, white);
+  outline-offset: 3px;
+}
+
+@media (max-width: 480px) {
+  .preview-columns {
+    grid-template-columns: 1fr;
+  }
+
+  .header-note {
+    font-size: 0.7rem;
+  }
 }
 
 /* ===== 商品画像 ===== */

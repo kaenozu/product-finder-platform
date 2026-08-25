@@ -5,13 +5,65 @@ test.describe("pitarikoポータル（URL分離）", () => {
     await page.goto("/");
     await expect(page.getByRole("heading", { name: /pitariko/ })).toBeVisible();
     await expect(page.getByText("診断を選ぶ")).toBeVisible();
-    await page.getByRole("link", { name: /炊飯器選び診断/ }).click();
+    await page.locator("a.category-card").filter({ hasText: "炊飯器選び診断" }).click();
     await expect(page.getByRole("heading", { name: /あなたに合った炊飯器を/ })).toBeVisible();
   });
 
-  test("アフィリエイト開示がポータルに表示される", async ({ page }) => {
+  test("トップで診断の負担・利用条件・結果イメージ・判定根拠を確認できる", async ({ page }) => {
     await page.goto("/");
-    await expect(page.getByText("本サイトはアフィリエイト広告を利用しています")).toBeVisible();
+    await expect(page.getByLabel("サービスの利用条件").getByText("無料・登録不要")).toBeVisible();
+    await expect(page.getByLabel("サービスの利用条件").getByText(/最大\d+問/)).toBeVisible();
+    const resultPreview = page.getByRole("region", { name: "診断結果の表示例" });
+    await expect(resultPreview).toBeVisible();
+    await expect(resultPreview.getByText("第一候補")).toBeVisible();
+    await expect(resultPreview.getByText("合う理由", { exact: true })).toBeVisible();
+    await expect(resultPreview.getByText("妥協点", { exact: true })).toBeVisible();
+    await expect(resultPreview.getByText("他候補との違い", { exact: true })).toBeVisible();
+    await expect(page.getByRole("region", { name: "判定の根拠" })).toBeVisible();
+    await expect(page.locator(".hero-cta")).toBeVisible();
+  });
+
+  test("トップの主要CTAとカテゴリ選択はキーボードで操作できる", async ({ page }) => {
+    await page.goto("/");
+    const cta = page.locator(".hero-cta");
+    await cta.focus();
+    await expect(cta).toBeFocused();
+    await cta.press("Enter");
+    await expect(page.getByRole("heading", { name: /あなたに合った炊飯器を/ })).toBeVisible();
+  });
+
+  test("カテゴリが複数あるときは先頭カテゴリへ自動遷移せず選択へ案内する", async ({ page }) => {
+    await page.route("**/api/categories", async (route) => {
+      await route.fulfill({
+        json: {
+          categories: [
+            {
+              categoryKey: "rice-cooker",
+              questionCount: 5,
+              copy: { appTitle: "炊飯器", heroTitle: "炊飯器診断", heroLead: "" },
+            },
+            {
+              categoryKey: "water-bottle",
+              questionCount: 4,
+              copy: { appTitle: "水筒", heroTitle: "水筒診断", heroLead: "" },
+            },
+          ],
+        },
+      });
+    });
+    await page.goto("/");
+    const cta = page.locator(".hero-cta");
+    await expect(cta).toHaveText("カテゴリを選んで診断する →");
+    await expect(cta).toHaveAttribute("href", "#category-heading");
+  });
+
+  test("カテゴリがないときは空リンクの主要CTAを表示しない", async ({ page }) => {
+    await page.route("**/api/categories", async (route) => {
+      await route.fulfill({ json: { categories: [] } });
+    });
+    await page.goto("/");
+    await expect(page.locator(".hero-cta")).toHaveCount(0);
+    await expect(page.getByText("現在診断できるカテゴリはありません。")).toBeVisible();
   });
 });
 
@@ -137,6 +189,14 @@ test.describe("炊飯器選び診断", () => {
 
     await expect(page.getByRole("heading", { name: "あなたに合う炊飯器" })).toBeVisible();
     await expect(page.getByText(/一致度 \d+%/).first()).toBeVisible();
+    await expect(
+      page
+        .getByText("回答条件を独自に点数化した相対的な目安です。確率や正解率ではありません。")
+        .first()
+    ).toBeVisible();
+    await expect(
+      page.getByText(/商品仕様は公式情報を照合しています。順位は/).first()
+    ).toBeVisible();
     await expect(page.locator(".spec-chips span").first()).toContainText(/合/);
     await page.locator(".product-card").first().getByRole("button", { name: "詳しく見る" }).click();
     await expect(page.getByText("スコア内訳")).toBeVisible();
@@ -148,6 +208,15 @@ test.describe("炊飯器選び診断", () => {
   test("結果画面に商品画像・購入CTA・データ更新日・アフィリエイト開示が表示される", async ({
     page,
   }) => {
+    // 商品画像は実外部サイトへのプロキシ取得のため、上流障害でテストが揺らがないようスタブする
+    const png = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+      "base64"
+    );
+    await page.route("**/img?url=*", (route) =>
+      route.fulfill({ contentType: "image/png", body: png })
+    );
+
     await page.goto("/rice-cooker");
     await page.getByRole("button", { name: "診断をはじめる" }).click();
 
@@ -161,5 +230,47 @@ test.describe("炊飯器選び診断", () => {
     await expect(page.getByRole("heading", { name: "あなたに合う炊飯器" })).toBeVisible();
     await expect(card.locator(".product-image img").first()).toBeVisible();
     await expect(page.getByText("本サイトはアフィリエイト広告を利用しています")).toBeVisible();
+  });
+
+  test("診断状態がURLに同期され、リロードでも結果が保持される", async ({ page }) => {
+    await page.goto("/rice-cooker");
+    await page.getByRole("button", { name: "診断をはじめる" }).click();
+
+    await page.getByRole("button", { name: "5.5合（5人以上）" }).click();
+    await page.getByRole("button", { name: "特にこだわらない" }).click();
+    await page.getByRole("button", { name: "こだわらない" }).click();
+    await page.getByRole("button", { name: "炊き上がりの味" }).click();
+    await page.getByRole("button", { name: "制限なし" }).click();
+
+    await expect(page.getByRole("heading", { name: "あなたに合う炊飯器" })).toBeVisible();
+
+    // 回答がURLに同期されている
+    const url = new URL(page.url());
+    expect(url.searchParams.get("a")).toContain("cookVolume:5.5");
+
+    // リロードしても同じ回答・結果が復元される
+    await page.reload();
+    await expect(page.getByRole("heading", { name: "あなたに合う炊飯器" })).toBeVisible();
+    await expect(page.locator(".product-card").first()).toBeVisible();
+  });
+
+  test("結果画面からURLをコピーして共有できる", async ({ page, context, browserName }) => {
+    test.skip(browserName === "webkit", "webkitはclipboard-write権限のgrantに非対応");
+    await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+    await page.goto("/rice-cooker");
+    await page.getByRole("button", { name: "診断をはじめる" }).click();
+
+    await page.getByRole("button", { name: "3合（2〜3人分）" }).click();
+    await page.getByRole("button", { name: /^IH炊飯器/ }).click();
+    await page.getByRole("button", { name: "こだわらない" }).click();
+    await page.getByRole("button", { name: "コンパクトさ" }).click();
+    await page.getByRole("button", { name: "制限なし" }).click();
+
+    await expect(page.getByRole("heading", { name: "あなたに合う炊飯器" })).toBeVisible();
+    await page.getByRole("button", { name: "結果のURLをコピー" }).click();
+    await expect(page.getByText("URLをコピーしました")).toBeVisible();
+
+    const clip = await page.evaluate(() => navigator.clipboard.readText());
+    expect(clip).toContain("/rice-cooker?a=");
   });
 });

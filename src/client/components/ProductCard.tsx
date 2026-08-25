@@ -1,11 +1,13 @@
 import type { CandidateResponse } from "../lib/api";
+import {
+  bestOffer,
+  formatDate,
+  formatPrice,
+  imageProxySrc,
+  priceInfo,
+} from "../lib/product-display";
+import { matchPercent, SCORE_DISCLOSURE } from "../lib/score-display";
 import { AFFILIATE_REL } from "./AffiliateNote";
-
-/** 商品画像は Worker の /img プロキシを経由して取得する
- * （一部メーカーの画像サーバーがブラウザからの直リンクをブロックするため） */
-function imageProxySrc(imageUrl: string): string {
-  return `/img?url=${encodeURIComponent(imageUrl)}`;
-}
 
 interface Props {
   candidate: CandidateResponse;
@@ -14,63 +16,6 @@ interface Props {
   scoreLabels: Record<string, string>;
   expanded: boolean;
   onToggle: () => void;
-}
-
-type PriceInfo =
-  | { kind: "sale"; label: "実売価格"; value: number }
-  | { kind: "reference"; label: "参考価格"; value: number }
-  | { kind: "unknown"; label: "価格情報なし"; value: null };
-
-function priceInfo(candidate: CandidateResponse): PriceInfo {
-  const prices = candidate.offers
-    .map((o) => o.priceMinor)
-    .filter((p): p is number => p !== null && p > 0);
-  if (prices.length > 0) {
-    return { kind: "sale", label: "実売価格", value: Math.min(...prices) / 100 };
-  }
-  if (candidate.product.referencePriceYen !== null) {
-    return {
-      kind: "reference",
-      label: "参考価格",
-      value: candidate.product.referencePriceYen,
-    };
-  }
-  return { kind: "unknown", label: "価格情報なし", value: null };
-}
-
-function formatPrice(info: PriceInfo): string {
-  return info.value === null
-    ? info.label
-    : `${info.label} ¥${info.value.toLocaleString("ja-JP")}〜`;
-}
-
-/** 購入CTAの最優先オファー: 在庫あり→最安値順。なければすべてのオファーから最安値 */
-function bestOffer(candidate: CandidateResponse) {
-  const offers = candidate.offers;
-  if (offers.length === 0) return null;
-  const inStock = offers.filter(
-    (o) => o.availability === "in_stock" || o.availability === "low_stock"
-  );
-  const pool = inStock.length > 0 ? inStock : offers;
-  const best = pool.reduce((min: (typeof pool)[number] | null, o) => {
-    if (min === null) return o;
-    const a = o.priceMinor ?? Number.POSITIVE_INFINITY;
-    const b = min.priceMinor ?? Number.POSITIVE_INFINITY;
-    return a < b ? o : min;
-  }, null);
-  return best;
-}
-
-function formatDate(value: string | undefined | null): string | null {
-  if (!value) return null;
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return null;
-  return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
-}
-
-function matchPercent(totalScore: number, maxScore: number): number {
-  if (maxScore <= 0) return 0;
-  return Math.round((totalScore / maxScore) * 100);
 }
 
 export function ProductCard({ candidate, rank, maxScore, scoreLabels, expanded, onToggle }: Props) {
@@ -98,7 +43,7 @@ export function ProductCard({ candidate, rank, maxScore, scoreLabels, expanded, 
         </div>
       </div>
 
-      {top && <p className="score-note">回答条件をスコア化した目安です。</p>}
+      {top && <p className="score-note">{SCORE_DISCLOSURE}</p>}
 
       {product.imageUrl && (
         <div className="product-image">

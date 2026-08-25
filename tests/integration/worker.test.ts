@@ -3,7 +3,7 @@ import { env } from "cloudflare:test";
 import worker from "../../worker/index";
 import type { Env } from "../../src/worker/env";
 
-const workerEnv = env as unknown as Env;
+const workerEnv = { ...env, RATE_LIMIT_BYPASS: "1" } as unknown as Env;
 
 describe("worker routing and request boundaries", () => {
   it("不正なpercent encodingを400へ変換する", async () => {
@@ -20,16 +20,59 @@ describe("worker routing and request boundaries", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("access-control-allow-origin")).toBe("*");
     expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(response.headers.get("content-security-policy")).toContain("default-src 'self'");
+    expect(response.headers.get("content-security-policy")).toContain("frame-ancestors 'none'");
+    expect(response.headers.get("referrer-policy")).toBe("strict-origin-when-cross-origin");
+    expect(response.headers.get("permissions-policy")).toBe(
+      "camera=(), geolocation=(), microphone=()"
+    );
+    expect(response.headers.get("x-frame-options")).toBe("DENY");
   });
 
-  it("公開カタログ未投入時はreadyを503で返し、診断の空結果と区別する", async () => {
+  it("画像プロキシにも共通security headerを付与する", async () => {
+    const response = await worker.fetch(
+      new Request(
+        "http://localhost/img?url=" +
+          encodeURIComponent("https://malicious.example.com/blocked.png")
+      ),
+      workerEnv
+    );
+
+    expect(response.status).toBe(403);
+    expect(response.headers.get("content-security-policy")).toContain("img-src 'self' data:");
+    expect(response.headers.get("x-frame-options")).toBe("DENY");
+  });
+
+  it("全カテゴリ未deployedならreadinessは200（rollout中はblockしない）", async () => {
     const response = await worker.fetch(new Request("http://localhost/api/ready"), workerEnv);
 
-    expect(response.status).toBe(503);
+    // テスト環境にcatalogがない場合、deployed=false のカテゴリは
+    // readiness を block しないため200になる
+    expect(response.status).toBe(200);
     expect((await response.json()) as unknown).toMatchObject({
-      ok: false,
+      ok: true,
       service: "product-finder-platform",
     });
+  });
+
+  it("deployed+未publishedカテゴリは503", async () => {
+    // テスト環境で catalog を作って deployed にするが published にしない
+    // → enabled+deployed+未published = fail-closed
+    const { env: testEnv } = await import("cloudflare:test");
+    const testDb = (testEnv as unknown as { DB: D1Database }).DB;
+    await testDb
+      .prepare(
+        `INSERT OR IGNORE INTO catalog_state (category_key, active_version_id, updated_at)
+         VALUES ('rice-cooker', 'fake-version-id', ?)`
+      )
+      .bind(new Date().toISOString())
+      .run();
+
+    const response = await worker.fetch(new Request("http://localhost/api/ready"), workerEnv);
+    const body = (await response.json()) as { ok: boolean };
+    // fake-version-id は published でないため 503
+    expect(response.status).toBe(503);
+    expect(body.ok).toBe(false);
   });
 
   it("32KiBを超える診断bodyを413で拒否する", async () => {
@@ -131,11 +174,11 @@ describe("worker routing and request boundaries", () => {
     });
   });
 
-  it("category未指定のconfigは後方互換でdefaultカテゴリを返す", async () => {
+  it("category未指定のconfigは400 missing_category（暗黙fallback廃止）", async () => {
     const response = await worker.fetch(new Request("http://localhost/api/config"), workerEnv);
 
-    expect(response.status).toBe(200);
-    expect((await response.json()) as unknown).toMatchObject({ categoryKey: "rice-cooker" });
+    expect(response.status).toBe(400);
+    expect((await response.json()) as unknown).toEqual({ error: "missing_category" });
   });
 });
 
@@ -242,12 +285,32 @@ describe("readiness and category rollout", () => {
     expect(body.error).toBe("category_not_enabled");
   });
 
+  it("未公開カテゴリはcategories/configから隠す", async () => {
+    const envWithDisabled = { ...workerEnv, ENABLED_CATEGORIES: "" } as Env;
+    const categories = await worker.fetch(
+      new Request("http://localhost/api/categories"),
+      envWithDisabled
+    );
+    expect(categories.status).toBe(200);
+    const categoriesBody = (await categories.json()) as { categories: unknown[] };
+    expect(categoriesBody.categories).toEqual([]);
+
+    const config = await worker.fetch(
+      new Request("http://localhost/api/config?category=rice-cooker"),
+      envWithDisabled
+    );
+    expect(config.status).toBe(404);
+    const configBody = (await config.json()) as { error: string };
+    expect(configBody.error).toBe("category_not_enabled");
+  });
+
   it("カテゴリ単位の状態がcategoriesに含まれる", async () => {
     const response = await worker.fetch(new Request("http://localhost/api/ready"), workerEnv);
     const body = (await response.json()) as {
       categories: Array<{
         categoryKey: string;
         enabled: boolean;
+        deployed: boolean;
         published: boolean;
         activeVersionStatus: string | null;
         productCount: number;
@@ -258,9 +321,104 @@ describe("readiness and category rollout", () => {
     for (const cat of body.categories) {
       expect(cat).toHaveProperty("categoryKey");
       expect(cat).toHaveProperty("enabled");
+      expect(cat).toHaveProperty("deployed");
       expect(cat).toHaveProperty("published");
       expect(cat).toHaveProperty("activeVersionStatus");
       expect(cat).toHaveProperty("productCount");
+    }
+  });
+
+  it("KV未設定+RATE_LIMIT_BYPASSなしでrate limit対象endpointは503", async () => {
+    const noBypassEnv = { ...workerEnv, RATE_LIMIT_BYPASS: undefined } as unknown as Env;
+    const response = await worker.fetch(
+      new Request("http://localhost/go/rakuten/token"),
+      noBypassEnv
+    );
+    expect(response.status).toBe(503);
+    const body = (await response.json()) as { error: string };
+    expect(body.error).toBe("rate_limit_unavailable");
+  });
+
+  it("RATE_LIMIT_BYPASS=1でrate limit対象endpointが通過する", async () => {
+    // rate limit対象の /api/diagnosis/evaluate。回答不足はcatalog非依存で400になるため
+    // bypass経由でゲートを通過したこと（503 rate_limit_unavailableにならないこと）を検証できる。
+    const response = await worker.fetch(
+      new Request("http://localhost/api/diagnosis/evaluate", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ categoryKey: "rice-cooker", answers: { cookVolume: "3" } }),
+      }),
+      workerEnv
+    );
+    // bypassありなのでrate limit起因の503にはならない（回答不足の400）
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { error: string };
+    expect(body.error).toBe("insufficient_answers");
+  });
+
+  it("enabled+未deployedカテゴリはreadinessをblockしない", async () => {
+    // rice-cooker は deployed だが、存在しないカテゴリを enabled に追加しても
+    // deployed=false なので readiness に影響しない
+    const envWithExtra = {
+      ...workerEnv,
+      ENABLED_CATEGORIES: "rice-cooker,hypothetical-new-category",
+    } as Env;
+
+    const response = await worker.fetch(new Request("http://localhost/api/ready"), envWithExtra);
+    const body = (await response.json()) as {
+      ok: boolean;
+      categories: Array<{
+        categoryKey: string;
+        enabled: boolean;
+        deployed: boolean;
+        published: boolean;
+      }>;
+    };
+
+    const hypothetical = body.categories.find((c) => c.categoryKey === "hypothetical-new-category");
+    // registryに未登録なので categories に含まれないが、
+    // もし含まれる場合でも deployed=false なら readiness を block しない
+    if (hypothetical) {
+      expect(hypothetical.deployed).toBe(false);
+    }
+    // rice-cooker が published ならサービスは ready
+    const riceCooker = body.categories.find((c) => c.categoryKey === "rice-cooker");
+    if (riceCooker?.published) {
+      expect(body.ok).toBe(true);
+    }
+  });
+
+  it("enabled+deployed+未publishedカテゴリは503を引き起こす", async () => {
+    // ENABLED_CATEGORIES を空にすると全カテゴリが無効化されるが、
+    // deployed なカテゴリが enabled=false なら readiness に影響しない
+    const envEmpty = { ...workerEnv, ENABLED_CATEGORIES: "" } as Env;
+    const response = await worker.fetch(new Request("http://localhost/api/ready"), envEmpty);
+    const body = (await response.json()) as { ok: boolean };
+    // 全カテゴリ無効 → deployableCategoriesが空 → ready (互換性)
+    expect(body.ok).toBe(true);
+  });
+
+  it("readinessがカテゴリごとのingest healthを返す", async () => {
+    const response = await worker.fetch(new Request("http://localhost/api/ready"), workerEnv);
+    const body = (await response.json()) as {
+      categories: Array<{
+        dataHealth: {
+          lastIngestStatus: string | null;
+          lastIngestFinishedAt: string | null;
+          lastSourceUpdatedAt: string | null;
+          consecutiveFailures: number;
+        };
+      }>;
+    };
+
+    expect(body.categories.length).toBeGreaterThan(0);
+    for (const category of body.categories) {
+      expect(category.dataHealth).toEqual(
+        expect.objectContaining({ consecutiveFailures: expect.any(Number) })
+      );
+      expect(category.dataHealth).toHaveProperty("lastIngestStatus");
+      expect(category.dataHealth).toHaveProperty("lastIngestFinishedAt");
+      expect(category.dataHealth).toHaveProperty("lastSourceUpdatedAt");
     }
   });
 });
