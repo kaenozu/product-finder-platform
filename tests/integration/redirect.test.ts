@@ -57,7 +57,7 @@ async function seedOffer(overrides: Partial<ProductOffer> = {}) {
     priceMinor: 2500000,
     currency: "JPY",
     availability: "in_stock",
-    updatedAt: "2026-08-19T00:00:00Z",
+    updatedAt: new Date().toISOString(),
     ...overrides,
   };
   await insertOffers(db(), versionId, [offer]);

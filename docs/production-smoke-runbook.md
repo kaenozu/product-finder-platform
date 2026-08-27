@@ -56,7 +56,15 @@ node scripts/production-smoke.mjs \
   --answers '{"cookVolume":"2","heating":"pressure_ih","budget":"10to20k","priority":"taste","installWidth":"free"}'
 ```
 
-The script checks:
+The `/api/ready` response must report, for every enabled and deployed category:
+
+- active catalog is `published` and contains products;
+- `dataHealth.sourceFresh=true`, where the oldest active product source timestamp is no older than the ingest freshness limit (currently 90 days);
+- `dataHealth.latestIngestHealthy=true`, where the most recent ingest run is `succeeded` (a `failed`, `rejected`, or missing run fails closed).
+
+An enabled category that is not deployed is still treated as rollout-only and does not block readiness. A deployed category failing any data check returns HTTP 503 with `ok=false`; do not treat an older published catalog as healthy after an ingest failure.
+
+The script also checks:
 
 - `/api/health` returns 200
 - `/api/ready` returns 200 and `ok=true`
