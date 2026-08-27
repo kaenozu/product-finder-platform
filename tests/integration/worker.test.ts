@@ -314,6 +314,10 @@ describe("readiness and category rollout", () => {
         published: boolean;
         activeVersionStatus: string | null;
         productCount: number;
+        dataHealth: {
+          sourceFresh: boolean;
+          latestIngestHealthy: boolean;
+        };
       }>;
     };
 
@@ -325,7 +329,58 @@ describe("readiness and category rollout", () => {
       expect(cat).toHaveProperty("published");
       expect(cat).toHaveProperty("activeVersionStatus");
       expect(cat).toHaveProperty("productCount");
+      expect(cat.dataHealth).toHaveProperty("sourceFresh");
+      expect(cat.dataHealth).toHaveProperty("latestIngestHealthy");
     }
+  });
+
+  it("deployed+publishedでもfreshnessまたは最新ingest失敗なら503", async () => {
+    const { env: testEnv } = await import("cloudflare:test");
+    const testDb = (testEnv as unknown as { DB: D1Database }).DB;
+    const now = new Date().toISOString();
+    await testDb.batch([
+      testDb
+        .prepare(
+          `INSERT OR REPLACE INTO catalog_state (category_key, active_version_id, updated_at)
+         VALUES ('rice-cooker', 'stale-version', ?)`
+        )
+        .bind(now),
+      testDb
+        .prepare(
+          `INSERT OR REPLACE INTO catalog_versions (version_id, category_key, source_key, status, item_count, created_at, published_at)
+         VALUES ('stale-version', 'rice-cooker', 'manual', 'published', 30, ?, ?)`
+        )
+        .bind(now, now),
+      testDb
+        .prepare(
+          `INSERT OR REPLACE INTO products
+         (version_id, product_id, category_key, manufacturer, model, display_name, specs_json, availability, source_key, source_updated_at, ingested_at)
+         VALUES ('stale-version', 'stale-product', 'rice-cooker', 'Test', 'STALE', 'Stale', '{}', 'active', 'manual', ?, ?)`
+        )
+        .bind(new Date(Date.now() - 91 * 86_400_000).toISOString(), now),
+      testDb
+        .prepare(
+          `INSERT OR REPLACE INTO ingest_runs (run_id, source_key, category_key, started_at, finished_at, status)
+         VALUES ('failed-readiness-run', 'manual', 'rice-cooker', ?, ?, 'failed')`
+        )
+        .bind(now, now),
+    ]);
+
+    const response = await worker.fetch(new Request("http://localhost/api/ready"), workerEnv);
+    const body = (await response.json()) as {
+      ok: boolean;
+      categories: Array<{ categoryKey: string; dataHealthy: boolean }>;
+    };
+    const riceCooker = body.categories.find((c) => c.categoryKey === "rice-cooker");
+    expect(riceCooker?.dataHealthy).toBe(false);
+    expect(body.ok).toBe(false);
+    expect(response.status).toBe(503);
+    await testDb.batch([
+      testDb.prepare("DELETE FROM products WHERE version_id = 'stale-version'"),
+      testDb.prepare("DELETE FROM catalog_versions WHERE version_id = 'stale-version'"),
+      testDb.prepare("DELETE FROM catalog_state WHERE category_key = 'rice-cooker'"),
+      testDb.prepare("DELETE FROM ingest_runs WHERE run_id = 'failed-readiness-run'"),
+    ]);
   });
 
   it("KV未設定+RATE_LIMIT_BYPASSなしでrate limit対象endpointは503", async () => {

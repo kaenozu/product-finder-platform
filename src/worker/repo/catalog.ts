@@ -1,4 +1,5 @@
 import type { CatalogProduct, ProductOffer } from "../../shared/domain/types";
+import { MAX_SOURCE_AGE_DAYS } from "../ingest/quality-gates";
 
 export interface ProductRow {
   product_id: string;
@@ -462,6 +463,8 @@ export interface IngestHealth {
   lastIngestFinishedAt: string | null;
   lastSourceUpdatedAt: string | null;
   consecutiveFailures: number;
+  sourceFresh: boolean;
+  latestIngestHealthy: boolean;
 }
 
 /**
@@ -481,7 +484,7 @@ export async function getIngestHealth(db: D1Database, categoryKey: string): Prom
 
   const freshRow = await db
     .prepare(
-      `SELECT MAX(p.source_updated_at) AS last_source_updated_at
+      `SELECT MIN(p.source_updated_at) AS last_source_updated_at
        FROM products p
        JOIN catalog_state s ON s.active_version_id = p.version_id
        WHERE s.category_key = ?`
@@ -511,6 +514,14 @@ export async function getIngestHealth(db: D1Database, categoryKey: string): Prom
     lastIngestFinishedAt: latest?.finished_at ?? null,
     lastSourceUpdatedAt: freshRow?.last_source_updated_at ?? null,
     consecutiveFailures,
+    sourceFresh: (() => {
+      if (!freshRow?.last_source_updated_at) return false;
+      const timestamp = Date.parse(freshRow.last_source_updated_at);
+      if (!Number.isFinite(timestamp)) return false;
+      const ageDays = (Date.now() - timestamp) / 86_400_000;
+      return ageDays >= 0 && ageDays <= MAX_SOURCE_AGE_DAYS;
+    })(),
+    latestIngestHealthy: latest?.status === "succeeded",
   };
 }
 

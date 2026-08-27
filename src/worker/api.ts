@@ -152,6 +152,8 @@ interface DataHealth {
   lastIngestFinishedAt: string | null;
   lastSourceUpdatedAt: string | null;
   consecutiveFailures: number;
+  sourceFresh: boolean;
+  latestIngestHealthy: boolean;
 }
 
 interface CategoryReadiness {
@@ -161,6 +163,7 @@ interface CategoryReadiness {
   published: boolean;
   activeVersionStatus: string | null;
   productCount: number;
+  dataHealthy: boolean;
   dataHealth: DataHealth;
 }
 
@@ -182,6 +185,7 @@ export async function handleReady(env: Env): Promise<Response> {
       ]);
       const published = readiness.activeVersionStatus === "published" && readiness.productCount > 0;
       const deployed = readiness.activeVersionId !== null;
+      const dataHealthy = health.sourceFresh && health.latestIngestHealthy;
       return {
         categoryKey,
         enabled: enabledKeys.has(categoryKey),
@@ -194,13 +198,19 @@ export async function handleReady(env: Env): Promise<Response> {
           lastIngestFinishedAt: health.lastIngestFinishedAt,
           lastSourceUpdatedAt: health.lastSourceUpdatedAt,
           consecutiveFailures: health.consecutiveFailures,
+          sourceFresh: health.sourceFresh,
+          latestIngestHealthy: health.latestIngestHealthy,
         },
+        // A deployed catalog is traffic-ready only when its source data is
+        // fresh and the latest ingest completed successfully.  Undeployed
+        // categories remain rollout-only and do not block the service.
+        dataHealthy,
       } satisfies CategoryReadiness;
     })
   );
 
   const deployableCategories = allCategories.filter((c) => c.enabled && c.deployed);
-  const serviceReady = deployableCategories.every((c) => c.published);
+  const serviceReady = deployableCategories.every((c) => c.published && c.dataHealthy);
 
   return json(
     {
