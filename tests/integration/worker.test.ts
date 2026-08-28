@@ -43,14 +43,14 @@ describe("worker routing and request boundaries", () => {
     expect(response.headers.get("x-frame-options")).toBe("DENY");
   });
 
-  it("全カテゴリ未deployedならreadinessは200（rollout中はblockしない）", async () => {
+  it("enabledカテゴリにactive catalogがなければreadinessは503", async () => {
     const response = await worker.fetch(new Request("http://localhost/api/ready"), workerEnv);
 
-    // テスト環境にcatalogがない場合、deployed=false のカテゴリは
-    // readiness を block しないため200になる
-    expect(response.status).toBe(200);
+    // テスト環境にcatalogがない場合もenabledカテゴリはトラフィック対象なので
+    // readinessを通さない（空のdeployableCategoriesによるfail-openを防ぐ）
+    expect(response.status).toBe(503);
     expect((await response.json()) as unknown).toMatchObject({
-      ok: true,
+      ok: false,
       service: "product-finder-platform",
     });
   });
@@ -411,9 +411,9 @@ describe("readiness and category rollout", () => {
     expect(body.error).toBe("insufficient_answers");
   });
 
-  it("enabled+未deployedカテゴリはreadinessをblockしない", async () => {
-    // rice-cooker は deployed だが、存在しないカテゴリを enabled に追加しても
-    // deployed=false なので readiness に影響しない
+  it("enabled+未deployedカテゴリはreadinessをblockする", async () => {
+    // rice-cooker は deployed だが、enabledカテゴリにactive catalogがなければ
+    // readinessを通さない
     const envWithExtra = {
       ...workerEnv,
       ENABLED_CATEGORIES: "rice-cooker,hypothetical-new-category",
@@ -431,26 +431,21 @@ describe("readiness and category rollout", () => {
     };
 
     const hypothetical = body.categories.find((c) => c.categoryKey === "hypothetical-new-category");
-    // registryに未登録なので categories に含まれないが、
-    // もし含まれる場合でも deployed=false なら readiness を block しない
-    if (hypothetical) {
-      expect(hypothetical.deployed).toBe(false);
-    }
-    // rice-cooker が published ならサービスは ready
-    const riceCooker = body.categories.find((c) => c.categoryKey === "rice-cooker");
-    if (riceCooker?.published) {
-      expect(body.ok).toBe(true);
-    }
+    // registryに未登録のキーは無視されるため、実際のenabledカテゴリが
+    // active catalogなしなら503になることを検証する。
+    expect(hypothetical).toBeUndefined();
+    expect(body.ok).toBe(false);
+    expect(response.status).toBe(503);
   });
 
   it("enabled+deployed+未publishedカテゴリは503を引き起こす", async () => {
-    // ENABLED_CATEGORIES を空にすると全カテゴリが無効化されるが、
-    // deployed なカテゴリが enabled=false なら readiness に影響しない
+    // ENABLED_CATEGORIES が空ならトラフィック対象がないため、
+    // readinessもfail-closedにする。
     const envEmpty = { ...workerEnv, ENABLED_CATEGORIES: "" } as Env;
     const response = await worker.fetch(new Request("http://localhost/api/ready"), envEmpty);
     const body = (await response.json()) as { ok: boolean };
-    // 全カテゴリ無効 → deployableCategoriesが空 → ready (互換性)
-    expect(body.ok).toBe(true);
+    expect(response.status).toBe(503);
+    expect(body.ok).toBe(false);
   });
 
   it("readinessがカテゴリごとのingest healthを返す", async () => {

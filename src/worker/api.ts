@@ -171,9 +171,8 @@ interface CategoryReadiness {
  * サービスレベル readiness。
  *
  * enabled + deployed カテゴリは published でなければならない（fail-closed）。
- * enabled + 未deployed カテゴリは rollout 中（code deploy → data publish）なので
- * readiness を block しない。これにより、新カテゴリ追加時に既存サービスが
- * 不必要に503にならない。
+ * enabled カテゴリはトラフィック対象なので、active catalog が無い場合も
+ * readiness を block する（空のfilter + every([])によるfail-openを防ぐ）。
  */
 export async function handleReady(env: Env): Promise<Response> {
   const enabledKeys = getEnabledCategories(env);
@@ -209,8 +208,10 @@ export async function handleReady(env: Env): Promise<Response> {
     })
   );
 
-  const deployableCategories = allCategories.filter((c) => c.enabled && c.deployed);
-  const serviceReady = deployableCategories.every((c) => c.published && c.dataHealthy);
+  const enabledCategories = allCategories.filter((c) => c.enabled);
+  const serviceReady =
+    enabledCategories.length > 0 &&
+    enabledCategories.every((c) => c.deployed && c.published && c.dataHealthy);
 
   return json(
     {
