@@ -30,8 +30,7 @@ export type RakutenOfferRejectReason =
   | "invalid_affiliate_url";
 
 export type RakutenOfferNormalizeResult =
-  | { ok: true; offer: ProductOffer }
-  | { ok: false; reason: RakutenOfferRejectReason };
+  { ok: true; offer: ProductOffer } | { ok: false; reason: RakutenOfferRejectReason };
 
 function isHttpsUrl(value: string): boolean {
   try {
@@ -50,7 +49,7 @@ function isHttpsUrl(value: string): boolean {
 export function normalizeRakutenAggregateOffer(
   record: RakutenProductSearchRecord,
   mapping: RakutenJanMapping,
-  fetchedAt: Date,
+  fetchedAt: Date
 ): RakutenOfferNormalizeResult {
   if (record.productCode !== mapping.janCode) {
     return { ok: false, reason: "jan_mismatch" };
