@@ -8,11 +8,11 @@ This document defines the code/operations boundary for migrating the three publi
 
 The application keeps the existing limits:
 
-| Binding                | Endpoint group              | Limit |     Period |
-| ---------------------- | --------------------------- | ----: | ---------: |
-| `RATE_LIMIT_GO`        | `/go` and `/go/*`           |    30 | 60 seconds |
-| `RATE_LIMIT_IMG`       | `/img`                      |    60 | 60 seconds |
-| `RATE_LIMIT_DIAGNOSIS` | `/api/diagnosis/evaluate`   |    20 | 60 seconds |
+| Binding                | Endpoint group            | Limit |     Period |
+| ---------------------- | ------------------------- | ----: | ---------: |
+| `RATE_LIMIT_GO`        | `/go` and `/go/*`         |    30 | 60 seconds |
+| `RATE_LIMIT_IMG`       | `/img`                    |    60 | 60 seconds |
+| `RATE_LIMIT_DIAGNOSIS` | `/api/diagnosis/evaluate` |    20 | 60 seconds |
 
 Native Rate Limiting configuration owns the period and limit. Any future Wrangler configuration must match the table above and use a separately verified namespace ID for each intended binding contract.
 
