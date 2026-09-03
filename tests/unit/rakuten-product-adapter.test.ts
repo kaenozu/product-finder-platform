@@ -9,9 +9,7 @@ import {
 const fetchedAt = new Date("2026-09-03T00:00:00.000Z");
 const mapping = { productId: "rice-cooker:test", janCode: "4900000000000" };
 
-function record(
-  overrides: Partial<RakutenProductSearchRecord> = {},
-): RakutenProductSearchRecord {
+function record(overrides: Partial<RakutenProductSearchRecord> = {}): RakutenProductSearchRecord {
   return {
     productId: "rakuten-product-id",
     productCode: mapping.janCode,
@@ -43,39 +41,35 @@ describe("normalizeRakutenAggregateOffer", () => {
 
   it("rejects a provider result whose JAN does not match the curated mapping", () => {
     expect(
-      normalizeRakutenAggregateOffer(
-        record({ productCode: "4909999999999" }),
-        mapping,
-        fetchedAt,
-      ),
+      normalizeRakutenAggregateOffer(record({ productCode: "4909999999999" }), mapping, fetchedAt)
     ).toEqual({ ok: false, reason: "jan_mismatch" });
   });
 
   it("rejects unavailable aggregate products instead of publishing a purchasable CTA", () => {
     expect(
-      normalizeRakutenAggregateOffer(record({ salesItemCount: 0 }), mapping, fetchedAt),
+      normalizeRakutenAggregateOffer(record({ salesItemCount: 0 }), mapping, fetchedAt)
     ).toEqual({ ok: false, reason: "no_purchasable_items" });
   });
 
   it("rejects missing or invalid aggregate price", () => {
     expect(
-      normalizeRakutenAggregateOffer(record({ salesMinPrice: null }), mapping, fetchedAt),
+      normalizeRakutenAggregateOffer(record({ salesMinPrice: null }), mapping, fetchedAt)
     ).toEqual({ ok: false, reason: "invalid_price" });
     expect(
-      normalizeRakutenAggregateOffer(record({ salesMinPrice: 12.5 }), mapping, fetchedAt),
+      normalizeRakutenAggregateOffer(record({ salesMinPrice: 12.5 }), mapping, fetchedAt)
     ).toEqual({ ok: false, reason: "invalid_price" });
   });
 
   it("requires an HTTPS affiliate URL", () => {
     expect(
-      normalizeRakutenAggregateOffer(record({ affiliateUrl: null }), mapping, fetchedAt),
+      normalizeRakutenAggregateOffer(record({ affiliateUrl: null }), mapping, fetchedAt)
     ).toEqual({ ok: false, reason: "missing_affiliate_url" });
     expect(
       normalizeRakutenAggregateOffer(
         record({ affiliateUrl: "http://example.com/item" }),
         mapping,
-        fetchedAt,
-      ),
+        fetchedAt
+      )
     ).toEqual({ ok: false, reason: "invalid_affiliate_url" });
   });
 });
